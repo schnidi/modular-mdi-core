@@ -73,6 +73,19 @@ python main.py
 
 ---
 
+## 📦 Installing Plugins from ZIP
+
+Plugins for this framework are distributed as standalone `.zip` archives. To install and use a plugin:
+
+1. **Download the Plugin:** Download the target plugin as a `.zip` archive.
+2. **Open Module Manager:** In the application menu, navigate to **Settings** (`Nastavenie`) $\rightarrow$ **Module Manager...** (`Správca Modulov...`).
+3. **Install from Archive:** Click the **Install from ZIP...** (`Inštalovať zo ZIP...`) button and select the downloaded `.zip` file.
+4. **Activate the Plugin:** Once extracted and validated by the core, check the checkbox next to the module name and click **Apply Changes** (`Použiť zmeny`).
+
+The plugin’s windows, menu entries, and background services will be immediately loaded into the workspace without requiring an application restart.
+
+---
+
 ## 📄 License
 
 This project is licensed under the **GNU Affero General Public License v3.0 (GNU AGPLv3)**.  
