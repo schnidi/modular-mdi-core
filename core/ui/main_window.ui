@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QWidget" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1000</width>
+    <height>700</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>VenvHub</string>
+  </property>
+  <layout class="QVBoxLayout" name="main_layout">
+   <property name="spacing">
+    <number>0</number>
+   </property>
+   <property name="leftMargin">
+    <number>1</number>
+   </property>
+   <property name="topMargin">
+    <number>1</number>
+   </property>
+   <property name="rightMargin">
+    <number>1</number>
+   </property>
+   <property name="bottomMargin">
+    <number>1</number>
+   </property>
+   <item>
+    <layout class="QVBoxLayout" name="title_bar_layout">
+     <property name="spacing">
+      <number>0</number>
+     </property>
+    </layout>
+   </item>
+   <item>
+    <widget class="QMenuBar" name="menu_bar">
+     <widget class="QMenu" name="menu_file">
+      <property name="title">
+       <string>Súbor</string>
+      </property>
+      <addaction name="action_open_test"/>
+      <addaction name="separator"/>
+      <addaction name="action_exit"/>
+     </widget>
+     <widget class="QMenu" name="menu_window">
+      <property name="title">
+       <string>Okno</string>
+      </property>
+      <addaction name="action_tile"/>
+      <addaction name="action_cascade"/>
+      <addaction name="separator"/>
+      <addaction name="action_minimize"/>
+      <addaction name="action_maximize"/>
+     </widget>
+     <widget class="QMenu" name="menu_help">
+      <property name="title">
+       <string>Pomocník</string>
+      </property>
+      <addaction name="action_about"/>
+     </widget>
+     <addaction name="menu_file"/>
+     <addaction name="menu_window"/>
+     <addaction name="menu_help"/>
+    </widget>
+   </item>
+   <item>
+    <widget class="QMdiArea" name="mdiArea">
+     <property name="viewMode">
+      <enum>QMdiArea::SubWindowView</enum>
+     </property>
+     <property name="documentMode">
+      <bool>false</bool>
+     </property>
+     <property name="tabsClosable">
+      <bool>true</bool>
+     </property>
+     <property name="tabsMovable">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+  </layout>
+  <action name="action_open_test">
+   <property name="text">
+    <string>Otvoriť testovacie okno</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+N</string>
+   </property>
+  </action>
+  <action name="action_tile">
+   <property name="text">
+    <string>Dlaždice (Vedľa seba)</string>
+   </property>
+  </action>
+  <action name="action_cascade">
+   <property name="text">
+    <string>Kaskáda</string>
+   </property>
+  </action>
+  <action name="action_exit">
+   <property name="text">
+    <string>Ukončiť</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Q</string>
+   </property>
+  </action>
+  <action name="action_minimize">
+   <property name="text">
+    <string>Minimalizovať</string>
+   </property>
+  </action>
+  <action name="action_maximize">
+   <property name="text">
+    <string>Maximalizovať / Obnoviť</string>
+   </property>
+  </action>
+  <action name="action_about">
+   <property name="text">
+    <string>O programe...</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
