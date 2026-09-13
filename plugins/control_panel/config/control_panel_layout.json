@@ -1,0 +1,3 @@
+[Layout]
+order = ["UserManagementWindow", "PrintersModule", "ThemeSetup", "WalletManagerWindow"]
+
