@@ -52,8 +52,8 @@ modules/             # Workspace for external plugins / custom modules
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/your-repository.git
-cd your-repository
+git clone https://github.com/schnidi/modular-mdi-core.git
+cd modular-mdi-core
 
 # Create a virtual environment
 python -m venv .venv
@@ -67,7 +67,8 @@ source .venv/bin/activate
 # Install dependencies
 pip install PyQt6 requests
 
-# Run the application
+# Navigate to the core directory and run the application
+cd core
 python main.py
 ```
 
