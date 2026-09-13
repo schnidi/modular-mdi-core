@@ -1,0 +1,451 @@
+/*
+ * Theme Name: Atom One Dark - Enterprise Office MDI
+ * Version: 2.0.0
+ * Author: VenvHub Team (Atom One Dark Inspired)
+ */
+
+/* =================================================================== */
+/* GLOBÁLNE NASTAVENIA                                                 */
+/* =================================================================== */
+
+QWidget {
+    font-family: "Segoe UI", Arial, sans-serif;
+    color: #ABB2BF;
+    background-color: transparent;
+    font-size: 12px;
+}
+
+/* =================================================================== */
+/* HLAVNÉ OKNO A MDI PRACOVNÁ PLOCHA                                   */
+/* =================================================================== */
+
+#MainWindow,
+#AboutDialog {
+    background-color: #21252B;
+    border: 1px solid #181A1F;
+}
+
+QMdiArea {
+    background-color: #1E2227;
+    border: none;
+}
+
+/* =================================================================== */
+/* MDI POD-OKNÁ (VONKAJŠÍ OBVODOVÝ RÁM)                                */
+/* =================================================================== */
+
+QMdiSubWindow {
+    background-color: transparent;
+    border: none;
+}
+
+/* Neaktívne MDI okno */
+QMdiSubWindow > QWidget {
+    background-color: #282C34;
+    border: 1px solid #3E4451;
+    border-radius: 0px;
+}
+
+QMdiSubWindow #CustomTitleBar {
+    background-color: #21252B;
+    border-bottom: 1px solid #181A1F;
+}
+
+QMdiSubWindow #CustomTitleBar QLabel#lbl_title {
+    color: #5C6370;
+    font-size: 12px;
+    font-weight: 500;
+    padding-left: 6px;
+    background: transparent;
+}
+
+/* Aktívne MDI okno */
+QMdiSubWindow[active="true"] > QWidget,
+QMdiSubWindow > QWidget[active="true"] {
+    background-color: #282C34;
+    border: 1px solid #61AFEF;
+    border-radius: 0px;
+}
+
+QMdiSubWindow[active="true"] #CustomTitleBar,
+QMdiSubWindow #CustomTitleBar[active="true"] {
+    background-color: #282C34;
+    border-bottom: 1px solid #61AFEF;
+}
+
+QMdiSubWindow[active="true"] #CustomTitleBar QLabel#lbl_title,
+QMdiSubWindow #CustomTitleBar[active="true"] QLabel#lbl_title {
+    color: #61AFEF;
+    font-size: 12px;
+    font-weight: 600;
+    padding-left: 6px;
+    background: transparent;
+}
+
+/* =================================================================== */
+/* TITULKOVÁ LIŠTA HLAVNÉHO OKNA                                       */
+/* =================================================================== */
+
+#MainWindow > #CustomTitleBar {
+    background-color: #21252B;
+    border-bottom: 1px solid #181A1F;
+}
+
+#MainWindow > #CustomTitleBar QLabel#lbl_title {
+    color: #ECEFF4;
+    font-size: 12px;
+    font-weight: 600;
+    padding-left: 6px;
+    background: transparent;
+}
+
+/* =================================================================== */
+/* BEŽNÉ FORMULÁROVÉ TLAČIDLÁ V OBSAHU                                 */
+/* =================================================================== */
+
+QPushButton {
+    background-color: #2C313A;
+    color: #ABB2BF;
+    border: 1px solid #3E4451;
+    padding: 5px 14px;
+    border-radius: 3px;
+    font-weight: 500;
+}
+
+QPushButton:hover {
+    background-color: #353B45;
+    border-color: #61AFEF;
+    color: #ECEFF4;
+}
+
+QPushButton:pressed {
+    background-color: #21252B;
+    border-color: #4D78CC;
+}
+
+/* =================================================================== */
+/* LIŠTOVÉ TLAČIDLÁ - ZÁKLADNÉ ROZMERY PRE VŠETKY OKNÁ                 */
+/* =================================================================== */
+
+#CustomTitleBar QPushButton,
+QMdiSubWindow #CustomTitleBar QPushButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 0px;
+    padding: 0px;
+    margin: 0px;
+    min-width: 45px;
+    max-width: 45px;
+    min-height: 30px;
+    max-height: 30px;
+}
+
+/* Sivý hover pre bežné tlačidlá v lište */
+#CustomTitleBar QPushButton#btn_minimize:hover,
+#CustomTitleBar QPushButton#btn_maximize:hover,
+#CustomTitleBar QPushButton#btn_about:hover,
+#CustomTitleBar QPushButton#btn_update_github:hover,
+QMdiSubWindow #CustomTitleBar QPushButton#btn_minimize:hover,
+QMdiSubWindow #CustomTitleBar QPushButton#btn_maximize:hover {
+    background-color: #353B45;
+}
+
+/* =================================================================== */
+/* IKONY PRE MINIMALIZÁCIU, MAXIMALIZÁCIU A OSTATNÉ (BIELE)           */
+/* =================================================================== */
+
+QPushButton#btn_minimize {
+    qproperty-icon: url("@ICON_DIR@/minimize_white.svg");
+    qproperty-iconSize: 11px 11px;
+}
+
+QPushButton#btn_maximize {
+    qproperty-icon: url("@ICON_DIR@/maximize_white.svg");
+    qproperty-iconSize: 11px 11px;
+}
+
+QPushButton#btn_maximize[maximized="true"] {
+    qproperty-icon: url("@ICON_DIR@/restore_white.svg");
+    qproperty-iconSize: 11px 11px;
+}
+
+QPushButton#btn_about {
+    qproperty-icon: url("@ICON_DIR@/about_white.svg");
+    qproperty-iconSize: 16px 16px;
+}
+
+QPushButton#btn_update_github {
+    qproperty-icon: url("@ICON_DIR@/update/github_update_white.svg");
+    qproperty-iconSize: 16px 16px;
+}
+
+/* =================================================================== */
+/* ZATVÁRACIE TLAČIDLO                                                 */
+/* =================================================================== */
+
+#CustomTitleBar QPushButton#btn_close,
+QMdiSubWindow #CustomTitleBar QPushButton#btn_close,
+QPushButton#btn_close {
+    qproperty-icon: url("");
+    background-color: transparent !important;
+    border: none !important;
+    border-radius: 0px !important;
+    margin: 0px !important;
+    min-width: 12px !important;
+    max-width: 12px !important;
+    min-height: 12px !important;
+    max-height: 12px !important;
+    padding: 9px 16px !important;
+    image: url("@ICON_DIR@/close_white.svg");
+}
+
+/* Hover: One Dark Red */
+#CustomTitleBar QPushButton#btn_close:hover,
+QMdiSubWindow #CustomTitleBar QPushButton#btn_close:hover,
+QPushButton#btn_close:hover {
+    background-color: #E06C75 !important;
+    image: url("@ICON_DIR@/close_white.svg") !important;
+}
+
+/* Pressed: Tmavšia červená */
+#CustomTitleBar QPushButton#btn_close:pressed,
+QMdiSubWindow #CustomTitleBar QPushButton#btn_close:pressed,
+QPushButton#btn_close:pressed {
+    background-color: #BE5046 !important;
+    image: url("@ICON_DIR@/close_white.svg") !important;
+}
+
+/* =================================================================== */
+/* APLIKAČNÉ MENU                                                      */
+/* =================================================================== */
+
+QMenuBar,
+QMenuBar#menu_bar {
+    background-color: #21252B;
+    border-bottom: 1px solid #181A1F;
+    padding: 2px 4px;
+    font-size: 12px;
+}
+
+QMenuBar::item,
+QMenuBar#menu_bar::item {
+    background-color: transparent;
+    color: #ABB2BF;
+    padding: 4px 9px;
+    border-radius: 2px;
+}
+
+QMenuBar::item:selected,
+QMenuBar#menu_bar::item:selected {
+    background-color: #2C313A;
+    color: #ECEFF4;
+}
+
+QMenu {
+    background-color: #21252B;
+    color: #ABB2BF;
+    border: 1px solid #181A1F;
+    padding: 4px 0px;
+    border-radius: 2px;
+}
+
+QMenu::item {
+    padding: 6px 28px 6px 22px;
+    background-color: transparent;
+}
+
+QMenu::item:selected {
+    background-color: #61AFEF;
+    color: #1E2227;
+    font-weight: 600;
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: #3E4451;
+    margin: 4px 8px;
+}
+
+/* =================================================================== */
+/* ZÁLOŽKY (TABS)                                                      */
+/* =================================================================== */
+
+QTabWidget::pane {
+    border: 1px solid #181A1F;
+    background-color: #282C34;
+    top: -1px;
+}
+
+QTabBar::tab {
+    background-color: #21252B;
+    color: #5C6370;
+    border: 1px solid #181A1F;
+    border-bottom: none;
+    padding: 6px 16px;
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+    min-width: 80px;
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: #2C313A;
+    color: #ABB2BF;
+}
+
+QTabBar::tab:selected {
+    background-color: #282C34;
+    color: #61AFEF;
+    font-weight: bold;
+    border-bottom: 1px solid #282C34;
+    border-top: 2px solid #61AFEF;
+}
+
+/* =================================================================== */
+/* VSTUPNÉ POLIA                                                       */
+/* =================================================================== */
+
+QLineEdit, QTextEdit, QPlainTextEdit {
+    background-color: #1E2227;
+    color: #ECEFF4;
+    border: 1px solid #3E4451;
+    border-radius: 2px;
+    padding: 4px;
+}
+
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
+    border: 1px solid #61AFEF;
+}
+
+/* =================================================================== */
+/* SPLASH SCREEN & PROGRESS BAR                                        */
+/* =================================================================== */
+
+#SplashScreen {
+    background-color: #21252B;
+    border: 1px solid #3E4451;
+    border-radius: 4px;
+}
+
+QProgressBar {
+    background-color: #1E2227;
+    border: 1px solid #3E4451;
+    border-radius: 2px;
+    text-align: center;
+    color: #ECEFF4;
+    height: 14px;
+}
+
+QProgressBar::chunk {
+    background-color: #61AFEF;
+}
+
+#FramelessDialog {
+    background-color: #21252B;
+    border: 1px solid #3E4451;
+}
+
+/* =================================================================== */
+/* ZOZNAMY, TABUĽKY A STROMY                                           */
+/* =================================================================== */
+
+QListWidget, QTreeWidget, QTableWidget {
+    background-color: #282C34;
+    color: #ABB2BF;
+    border: 1px solid #181A1F;
+    border-radius: 2px;
+    padding: 2px;
+    gridline-color: #21252B;
+}
+
+QListWidget::item, QTreeWidget::item, QTableWidget::item {
+    padding: 5px 8px;
+    border-bottom: 1px solid #21252B;
+}
+
+QListWidget::item:hover, QTreeWidget::item:hover, QTableWidget::item:hover {
+    background-color: #2C313A;
+    color: #ECEFF4;
+}
+
+QListWidget::item:selected, QTreeWidget::item:selected, QTableWidget::item:selected {
+    background-color: #3E4451;
+    color: #61AFEF;
+    font-weight: 600;
+}
+
+/* Hlavičky tabuliek a stromov */
+QHeaderView::section {
+    background-color: #21252B;
+    color: #5C6370;
+    font-weight: 600;
+    font-size: 11px;
+    padding: 4px 8px;
+    border: none;
+    border-bottom: 1px solid #181A1F;
+    border-right: 1px solid #181A1F;
+}
+
+/* =================================================================== */
+/* ROZBAĽOVACIE ZOZNAMY (COMBOBOX) A ČÍSELNÍKY (SPINBOX)               */
+/* =================================================================== */
+
+QComboBox {
+    background-color: #1E2227;
+    color: #ECEFF4;
+    border: 1px solid #3E4451;
+    border-radius: 2px;
+    padding: 4px 8px;
+    min-height: 20px;
+}
+
+QSpinBox {
+    background-color: #1E2227;
+    color: #ECEFF4;
+    border: 1px solid #3E4451;
+    border-radius: 2px;
+    padding: 4px 4px;
+    padding-right: 25px;
+    min-height: 20px;
+}
+
+QComboBox:focus, QSpinBox:focus {
+    border: 1px solid #61AFEF;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 20px;
+    border-left: 1px solid #3E4451;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #21252B;
+    color: #ABB2BF;
+    border: 1px solid #181A1F;
+    selection-background-color: #61AFEF;
+    selection-color: #1E2227;
+}
+
+/* =================================================================== */
+/* SKUPINOVÉ BOXY (GROUPBOX)                                           */
+/* =================================================================== */
+
+QGroupBox {
+    font-weight: 600;
+    color: #ECEFF4;
+    border: 1px solid #3E4451;
+    border-radius: 3px;
+    margin-top: 10px;
+    padding-top: 15px;
+    background-color: #282C34;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 10px;
+    padding: 0 4px;
+    background-color: #282C34;
+    color: #61AFEF;
+}
