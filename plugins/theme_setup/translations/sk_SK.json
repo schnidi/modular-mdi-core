@@ -1,0 +1,31 @@
+{
+    "ThemeSetupWindow": "Správa Vzhľadu a Tém",
+    "Vzhľad a Témy": "Vzhľad a Témy",
+    "theme_setup.menu_title": "Vzhľad a Témy...",
+    "label": "Správa Vzhľadu a Tém",
+    "btnAddTheme": "Pridať tému (.qss)...",
+    "btnDeleteTheme": "Zmazať vybranú",
+    "btnApplyTheme": "Uložiť a Aplikovať Tému",
+    "lbl_default_theme_tag": "(základná)",
+
+    "title_error": "Chyba",
+    "title_success": "Úspech",
+    "title_confirm": "Potvrdenie",
+    "title_warning": "Upozornenie",
+
+    "err_theme_not_found": "Súbor témy '{0}' nebol nájdený.",
+    "err_apply_theme_failed": "Chyba pri aplikovaní témy: {0}",
+    "msg_theme_applied": "Téma '{0}' bola úspešne aplikovaná a uložená.",
+    "err_save_theme_failed": "Nepodarilo sa uložiť nastavenie témy: {0}",
+
+    "dialog_select_theme": "Vyberte súbor s témou",
+    "filter_qss": "QSS (*.qss)",
+    "msg_theme_overwrite_confirm": "Téma '{0}' už existuje. Chcete ju prepísať?",
+    "msg_theme_imported": "Téma '{0}' bola úspešne pridaná.",
+    "err_theme_import_failed": "Nepodarilo sa skopírovať súbor: {0}",
+
+    "err_cannot_delete_default_theme": "Základné témy systému nie je možné zmazať.",
+    "msg_theme_delete_confirm": "Naozaj chcete permanentne zmazať tému '{0}'?",
+    "msg_theme_deleted": "Téma '{0}' bola zmazaná.",
+    "err_theme_delete_failed": "Nepodarilo sa zmazať súbor: {0}"
+}

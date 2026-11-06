@@ -1,0 +1,31 @@
+{
+    "ThemeSetupWindow": "Theme & Appearance Manager",
+    "Vzhľad a Témy": "Themes & Appearance",
+    "theme_setup.menu_title": "Themes & Appearance...",
+    "label": "Theme & Appearance Manager",
+    "btnAddTheme": "Add theme (.qss)...",
+    "btnDeleteTheme": "Delete selected",
+    "btnApplyTheme": "Save & Apply Theme",
+    "lbl_default_theme_tag": "(default)",
+
+    "title_error": "Error",
+    "title_success": "Success",
+    "title_confirm": "Confirmation",
+    "title_warning": "Warning",
+
+    "err_theme_not_found": "Theme file '{0}' was not found.",
+    "err_apply_theme_failed": "Error applying theme: {0}",
+    "msg_theme_applied": "Theme '{0}' was successfully applied and saved.",
+    "err_save_theme_failed": "Failed to save theme setting: {0}",
+
+    "dialog_select_theme": "Select Theme File",
+    "filter_qss": "QSS (*.qss)",
+    "msg_theme_overwrite_confirm": "Theme '{0}' already exists. Do you want to overwrite it?",
+    "msg_theme_imported": "Theme '{0}' was successfully added.",
+    "err_theme_import_failed": "Failed to copy file: {0}",
+
+    "err_cannot_delete_default_theme": "Default system themes cannot be deleted.",
+    "msg_theme_delete_confirm": "Are you sure you want to permanently delete theme '{0}'?",
+    "msg_theme_deleted": "Theme '{0}' was deleted.",
+    "err_theme_delete_failed": "Failed to delete file: {0}"
+}

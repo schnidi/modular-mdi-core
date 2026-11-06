@@ -1,18 +1,43 @@
+# Súbor: core/_path.py
+
 import os
+import sys
+
 
 class Paths:
-    """Centrálny manažér ciest pre celú aplikáciu."""
+    """
+    Centrálny manažér ciest pre celú aplikáciu.
+    Plne pripravený na beh v Pythone aj na skompilovaný .exe balíček (NSIS / PyInstaller).
+    """
 
     ASSETS_DIR_NAME = "assets"
 
     @staticmethod
     def get_root():
-        """Vráti koreň projektu (zložka nad 'core')."""
+        """
+        Vráti koreň projektu:
+        - Pri behu v Pythone: priečinok nad 'core'.
+        - Pri zabalení do EXE (onefile): dočasný priečinok sys._MEIPASS.
+        - Pri zabalení do EXE (onedir / NSIS): priečinok, kde sa nachádza .exe súbor.
+        """
+        if getattr(sys, 'frozen', False):
+            if hasattr(sys, '_MEIPASS'):
+                return sys._MEIPASS
+            return os.path.dirname(os.path.abspath(sys.executable))
+
         return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     @staticmethod
     def get_core_dir():
-        return os.path.join(Paths.get_root(), "core")
+        """
+        Vráti cestu k priečinku 'core'.
+        Ošetruje aj stav po zabalení do EXE, kde štruktúra môže byť priamo v koreni.
+        """
+        root = Paths.get_root()
+        core_subdir = os.path.join(root, "core")
+        if os.path.exists(core_subdir):
+            return core_subdir
+        return root
 
     @staticmethod
     def get_config_dir():
@@ -54,6 +79,11 @@ class Paths:
         return os.path.join(Paths.get_core_dir(), Paths.ASSETS_DIR_NAME)
 
     @staticmethod
+    def get_about_json_path():
+        """Centrálna cesta priamo k súboru about.json odolná voči EXE a NSIS."""
+        return os.path.join(Paths.get_assets_dir(), "about.json")
+
+    @staticmethod
     def get_icon_dir():
         """Vráti cestu k priečinku s ikonami."""
         return os.path.join(Paths.get_core_dir(), "themes", "icon")
@@ -71,7 +101,7 @@ class Paths:
         """
         if not qss_content:
             return ""
-        
+
         themes_dir = Paths.get_themes_dir().replace("\\", "/")
         icons_dir = Paths.get_icon_dir().replace("\\", "/")
         core_dir = Paths.get_core_dir().replace("\\", "/")
@@ -84,10 +114,12 @@ class Paths:
 
     # Aliasy pre spätnú kompatibilitu
     @staticmethod
-    def get_app_root_path(): return Paths.get_root()
-    @staticmethod
-    def get_base_path(): return Paths.get_root()
+    def get_app_root_path():
+        return Paths.get_root()
 
+    @staticmethod
+    def get_base_path():
+        return Paths.get_root()
 
     @staticmethod
     def get_modules_ini():

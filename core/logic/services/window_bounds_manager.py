@@ -41,6 +41,15 @@ class WindowBoundsClampFilter(QObject):
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if obj == self.target_widget and not self._is_adjusting:
+            # Počas aktívneho ťahania lištou nezasahujeme, lišta drží mantinely plynulo
+            if (
+                getattr(self.target_widget, '_is_dragging', False)
+                or getattr(self.target_widget, '_resizing', False)
+                or getattr(self.target_widget, '_is_changing_mode', False)
+                or getattr(self.target_widget, '_is_restoring', False)
+            ):
+                return super().eventFilter(obj, event)
+
             if event.type() in (QEvent.Type.Move, QEvent.Type.Resize):
                 self._clamp_bounds(self.target_widget)
 
@@ -94,9 +103,9 @@ class WindowBoundsClampFilter(QObject):
             finally:
                 self._is_adjusting = False
 
-        if self.on_geometry_changed:
-            self._pending_geometry = sub_win.geometry()
-            self._save_timer.start()
+            if self.on_geometry_changed:
+                self._pending_geometry = sub_win.geometry()
+                self._save_timer.start()
 
     def _clamp_dialog_or_window(self, dialog: QWidget):
         """
@@ -228,8 +237,7 @@ class WindowBoundsManager:
     @staticmethod
     def get_clamped_position(dialog: QWidget, target_pos: QPoint) -> QPoint:
         """
-        Vypočíta a vráti bezpečnú pozíciu (X, Y) pre dialóg ešte PRED zavolaním move().
-        Zabezpečí, že okno nepretečie cez MDI plochu ani cez monitor.
+        Vypočíta a vráti bezpečnú pozíciu (X, Y) s plnou podporou viacerých monitorov.
         """
         cur_w = dialog.width()
         cur_h = dialog.height()
@@ -238,15 +246,26 @@ class WindowBoundsManager:
         while parent and parent.parentWidget() and not parent.isWindow():
             parent = parent.parentWidget()
 
+        # 1. AK IDE O SAMOSTATNÉ / HLAVNÉ OKNO (alebo dialóg bez viditeľného rodiča)
         if not parent or not parent.isVisible():
-            screen = dialog.screen() or QGuiApplication.primaryScreen()
+            from PyQt6.QtGui import QCursor
+            cursor_pos = QCursor.pos()
+            screen = QGuiApplication.screenAt(cursor_pos) or dialog.screen() or QGuiApplication.primaryScreen()
             if not screen:
                 return target_pos
+
             s_geo = screen.availableGeometry()
             min_x, min_y = s_geo.left(), s_geo.top()
             max_x = max(min_x, s_geo.right() - cur_w + 1)
             max_y = max(min_y, s_geo.bottom() - cur_h + 1)
+
+            new_x = max(min_x, min(target_pos.x(), max_x))
+            new_y = max(min_y, min(target_pos.y(), max_y))
+
+            return target_pos
+
         else:
+            # 2. PRIORITA: Ak má hlavné okno MDI plochu (pod-okná/dialógy vnútri MDI)
             mdi_area = getattr(parent, "mdiArea", None) or parent.findChild(QMdiArea)
             if mdi_area and mdi_area.isVisible() and mdi_area.width() > 50:
                 top_left = mdi_area.mapToGlobal(QPoint(0, 0))
@@ -267,6 +286,6 @@ class WindowBoundsManager:
                 max_x = max(min_x, parent.mapToGlobal(QPoint(parent.width(), 0)).x() - cur_w)
                 max_y = max(min_y, parent.mapToGlobal(QPoint(0, parent.height())).y() - cur_h)
 
-        new_x = max(min_x, min(target_pos.x(), max_x))
-        new_y = max(min_y, min(target_pos.y(), max_y))
-        return QPoint(new_x, new_y)
+            new_x = max(min_x, min(target_pos.x(), max_x))
+            new_y = max(min_y, min(target_pos.y(), max_y))
+            return QPoint(new_x, new_y)

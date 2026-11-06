@@ -1,0 +1,14 @@
+PyQt6
+cryptography
+pytest
+qrcode
+requests
+selenium
+webdriver-manager
+beautifulsoup4
+Pillow
+pywin32
+mysql-connector-python
+google-generativeai
+pandas
+openpyxl

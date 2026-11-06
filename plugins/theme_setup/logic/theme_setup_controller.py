@@ -1,40 +1,31 @@
 # Súbor: modules/theme_setup/logic/theme_setup_controller.py
 
-from pathlib import Path
-import shutil
 import re
+import shutil
+import configparser
+from pathlib import Path
+from PyQt6.QtWidgets import QApplication, QFileDialog
 
-from PyQt6.QtWidgets import QApplication
-
-# Používame len služby a veci, ktoré reálne v jadre máš
-from core.logic.plugin.service_manager import ServiceManager
-from core.logic.language_manager import LanguageManager
-from core.logic.skin_manager import SkinManager
-from core.logic.services.config_manager import ConfigManager
-from core._path import Paths
-from core.enum_core import ConfigSection, ConfigKey
-
-_ = LanguageManager.get
+from core.enum_core import ICoreBridge
+from .. import _paths
 
 
 class ThemeSetupController:
-    def __init__(self, view, service_manager=None):
+    def __init__(self, view, bridge: ICoreBridge = None):
         self.view = view
-        self.service_manager = service_manager or ServiceManager.get_instance()
-        
-        # Dialógy berieme z jadra, aby prevzali štýl aplikácie
-        self.dialog_service = self.service_manager.get_service("dialog_service")
-        
-        # Cesty k témam
-        self.default_themes_dir = Path(Paths.get_themes_dir())
-        self.user_themes_dir = Path(Paths.get_user_themes_dir())
-        self.config_manager = ConfigManager(Path(Paths.get_config_dir()) / "theme_settings.ini")
+        self.bridge = bridge or ICoreBridge.get_instance()
 
-        # Signály z UI
+        # Cesty k témam aplikácie odvodené z umiestnenia modulu
+        self.project_root = _paths.MODULE_ROOT.parent.parent
+        self.core_dir = self.project_root / "core"
+        self.default_themes_dir = self.core_dir / "themes" / "skin"
+        self.user_themes_dir = self.core_dir / "themes" / "user"
+        self.config_file = self.core_dir / "config" / "theme_settings.ini"
+
         self.view.save_and_apply_theme_requested.connect(self.save_and_apply_theme)
         self.view.add_theme_requested.connect(self.add_theme)
         self.view.delete_theme_requested.connect(self.delete_theme)
-        
+
         self.load_available_themes()
 
     def _parse_theme_metadata(self, file_path: Path) -> dict:
@@ -52,110 +43,137 @@ class ThemeSetupController:
     def load_available_themes(self):
         self.default_themes_dir.mkdir(parents=True, exist_ok=True)
         self.user_themes_dir.mkdir(parents=True, exist_ok=True)
-        
+
         themes_info = []
         processed_files = set()
 
-        # 1. Základné témy
-        for f in self.default_themes_dir.glob("*.qss"):
-            if f.name in processed_files: 
-                continue
-            metadata = self._parse_theme_metadata(f)
-            themes_info.append({
-                'filename': f.name,
-                'display_name': metadata['ThemeName'],
-                'is_deletable': False
-            })
-            processed_files.add(f.name)
-            
+        # 1. Základné systémové témy
+        if self.default_themes_dir.exists():
+            for f in self.default_themes_dir.glob("*.qss"):
+                if f.name in processed_files:
+                    continue
+                metadata = self._parse_theme_metadata(f)
+                themes_info.append({
+                    'filename': f.name,
+                    'display_name': metadata['ThemeName'],
+                    'is_deletable': False
+                })
+                processed_files.add(f.name)
+
         # 2. Užívateľské témy
-        for f in self.user_themes_dir.glob("*.qss"):
-            if f.name in processed_files: 
-                continue
-            metadata = self._parse_theme_metadata(f)
-            themes_info.append({
-                'filename': f.name,
-                'display_name': metadata['ThemeName'],
-                'is_deletable': True
-            })
-            processed_files.add(f.name)
-        
+        if self.user_themes_dir.exists():
+            for f in self.user_themes_dir.glob("*.qss"):
+                if f.name in processed_files:
+                    continue
+                metadata = self._parse_theme_metadata(f)
+                themes_info.append({
+                    'filename': f.name,
+                    'display_name': metadata['ThemeName'],
+                    'is_deletable': True
+                })
+                processed_files.add(f.name)
+
         sorted_themes = sorted(themes_info, key=lambda x: x['display_name'].lower())
         self.view.populate_themes_list(sorted_themes)
 
+    def _process_qss_paths(self, qss_content: str) -> str:
+        """Nahradí makrá @THEMES_DIR@, @ICON_DIR@ a @CORE_DIR@ priamymi lomkami pre Qt."""
+        themes_dir = str(self.default_themes_dir).replace("\\", "/")
+        icons_dir = str(self.core_dir / "themes" / "icon").replace("\\", "/")
+        core_dir = str(self.core_dir).replace("\\", "/")
+
+        qss_content = qss_content.replace("@THEMES_DIR@", themes_dir)
+        qss_content = qss_content.replace("@ICON_DIR@", icons_dir)
+        qss_content = qss_content.replace("@CORE_DIR@", core_dir)
+        return qss_content
+
     def _apply_theme_logic(self, theme_filename: str) -> bool:
-        skin_name = Path(theme_filename).stem
-        user_theme_path = self.user_themes_dir / theme_filename
+        user_path = self.user_themes_dir / theme_filename
+        system_path = self.default_themes_dir / theme_filename
+        target_path = user_path if user_path.exists() else system_path
 
-        # Užívateľská téma: modul sám spracuje cesty a nastaví štýl
-        if user_theme_path.exists():
-            try:
-                raw_content = user_theme_path.read_text(encoding='utf-8')
-                processed_content = Paths.process_qss_paths(raw_content)
-                QApplication.instance().setStyleSheet(processed_content)
-                return True
-            except Exception as e:
-                if self.dialog_service:
-                    self.dialog_service.critical(self.view, _("Chyba"), f"Chyba pri aplikovaní témy: {e}")
-                return False
+        if not target_path.exists():
+            msg = self.bridge.get_text("err_theme_not_found", "Súbor témy '{0}' nebol nájdený.").format(theme_filename)
+            self.bridge.show_error(self.bridge.get_text("title_error", "Chyba"), msg, parent=self.view)
+            return False
 
-        # Základná systémová téma: voláme SkinManager
-        return SkinManager.apply_skin(skin_name)
+        try:
+            raw_content = target_path.read_text(encoding='utf-8')
+            processed_content = self._process_qss_paths(raw_content)
+            QApplication.instance().setStyleSheet(processed_content)
+            return True
+        except Exception as e:
+            msg = self.bridge.get_text("err_apply_theme_failed", "Chyba pri aplikovaní témy: {0}").format(e)
+            self.bridge.show_error(self.bridge.get_text("title_error", "Chyba"), msg, parent=self.view)
+            return False
 
     def save_and_apply_theme(self, theme_filename: str):
         if self._apply_theme_logic(theme_filename):
-            self.config_manager.set_value(
-                ConfigSection.SETTINGS, 
-                ConfigKey.ACTIVE_THEME, 
-                Path(theme_filename).stem
-            )
-            self.config_manager.save()
+            skin_name = Path(theme_filename).stem
+            try:
+                config = configparser.ConfigParser()
+                self.config_file.parent.mkdir(parents=True, exist_ok=True)
+                if self.config_file.exists():
+                    config.read(self.config_file, encoding='utf-8')
+
+                if not config.has_section("Settings"):
+                    config.add_section("Settings")
+                config.set("Settings", "active_theme", skin_name)
+
+                with open(self.config_file, "w", encoding='utf-8') as f:
+                    config.write(f)
+
+                msg = self.bridge.get_text("msg_theme_applied", "Téma '{0}' bola úspešne aplikovaná a uložená.").format(skin_name)
+                self.bridge.show_info(self.bridge.get_text("title_success", "Úspech"), msg, parent=self.view)
+            except Exception as e:
+                msg = self.bridge.get_text("err_save_theme_failed", "Nepodarilo sa uložiť nastavenie témy: {0}").format(e)
+                self.bridge.show_error(self.bridge.get_text("title_error", "Chyba"), msg, parent=self.view)
 
     def add_theme(self):
-        # Ak vie dialog_service otvoriť výber súboru, použije sa, inak fallback
-        if self.dialog_service and hasattr(self.dialog_service, "get_open_file_name"):
-            filepath = self.dialog_service.get_open_file_name(self.view, _("Vyberte súbor s témou"), "", "QSS (*.qss)")
-        else:
-            from PyQt6.QtWidgets import QFileDialog
-            filepath, _ = QFileDialog.getOpenFileName(self.view, _("Vyberte súbor s témou"), "", "QSS (*.qss)")
-
-        if not filepath: 
+        title = self.bridge.get_text("dialog_select_theme", "Vyberte súbor s témou")
+        filter_str = self.bridge.get_text("filter_qss", "QSS (*.qss)")
+        filepath, _ = QFileDialog.getOpenFileName(self.view, title, "", filter_str)
+        if not filepath:
             return
-        
+
         source_path = Path(filepath)
         dest_path = self.user_themes_dir / source_path.name
-        
+
         if dest_path.exists():
-            question_text = _("Téma '{name}' už existuje. Prepísať?").format(name=source_path.name)
-            if self.dialog_service:
-                if not self.dialog_service.question(self.view, _("Súbor existuje"), question_text):
-                    return
+            confirm_msg = self.bridge.get_text(
+                "msg_theme_overwrite_confirm",
+                "Téma '{0}' už existuje. Chcete ju prepísať?"
+            ).format(source_path.name)
+            if not self.bridge.ask_question(self.bridge.get_text("title_confirm", "Potvrdenie"), confirm_msg, parent=self.view):
+                return
 
         try:
             shutil.copy(source_path, dest_path)
             self.load_available_themes()
-            if self.dialog_service:
-                self.dialog_service.information(self.view, _("Úspech"), _("Téma bola úspešne pridaná."))
+            msg = self.bridge.get_text("msg_theme_imported", "Téma '{0}' bola úspešne pridaná.").format(source_path.name)
+            self.bridge.show_info(self.bridge.get_text("title_success", "Úspech"), msg, parent=self.view)
         except Exception as e:
-            if self.dialog_service:
-                self.dialog_service.critical(self.view, _("Chyba"), f"Nepodarilo sa skopírovať súbor:\n{e}")
+            msg = self.bridge.get_text("err_theme_import_failed", "Nepodarilo sa skopírovať súbor: {0}").format(e)
+            self.bridge.show_error(self.bridge.get_text("title_error", "Chyba"), msg, parent=self.view)
 
     def delete_theme(self, theme_filename: str, is_deletable: bool):
         if not is_deletable:
-            if self.dialog_service:
-                self.dialog_service.warning(self.view, _("Operácia zamietnutá"), _("Základné témy nie je možné zmazať."))
+            msg = self.bridge.get_text("err_cannot_delete_default_theme", "Základné témy systému nie je možné zmazať.")
+            self.bridge.show_warning(self.bridge.get_text("title_warning", "Upozornenie"), msg, parent=self.view)
             return
-            
-        question_text = _("Naozaj zmazať tému '{name}'?").format(name=theme_filename)
-        if self.dialog_service:
-            if not self.dialog_service.question(self.view, _("Potvrdenie"), question_text):
-                return
+
+        confirm_msg = self.bridge.get_text(
+            "msg_theme_delete_confirm",
+            "Naozaj chcete permanentne zmazať tému '{0}'?"
+        ).format(theme_filename)
+        if not self.bridge.ask_question(self.bridge.get_text("title_confirm", "Potvrdenie"), confirm_msg, parent=self.view):
+            return
 
         try:
-            (self.user_themes_dir / theme_filename).unlink()
+            (self.user_themes_dir / theme_filename).unlink(missing_ok=True)
             self.load_available_themes()
-            if self.dialog_service:
-                self.dialog_service.information(self.view, _("Úspech"), _("Téma bola úspešne zmazaná."))
+            msg = self.bridge.get_text("msg_theme_deleted", "Téma '{0}' bola zmazaná.").format(theme_filename)
+            self.bridge.show_info(self.bridge.get_text("title_success", "Úspech"), msg, parent=self.view)
         except Exception as e:
-            if self.dialog_service:
-                self.dialog_service.critical(self.view, _("Chyba"), f"Nepodarilo sa zmazať súbor:\n{e}")
+            msg = self.bridge.get_text("err_theme_delete_failed", "Nepodarilo sa zmazať súbor: {0}").format(e)
+            self.bridge.show_error(self.bridge.get_text("title_error", "Chyba"), msg, parent=self.view)

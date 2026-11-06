@@ -1,7 +1,4 @@
-"""
-Súbor: core/windows/module_setup_window.py
-Grafické okno správy a inštalácie modulov pre MDI plochu.
-"""
+# Súbor: core/windows/module_setup_window.py
 
 from PyQt6.QtWidgets import QWidget, QStyleOption, QStyle, QSpacerItem, QSizePolicy
 from PyQt6.QtGui import QPainter
@@ -16,10 +13,9 @@ from core.windows.module_list_item import ModuleListItem
 class ModuleSetupWindow(QWidget):
     """View pre správu, zapínanie a inštaláciu modulov."""
 
-    # Signály, ktoré očakáva ModuleSetupController
-    apply_changes_requested = pyqtSignal(dict)   # {module_name: is_enabled, ...}
+    apply_changes_requested = pyqtSignal(dict)
     install_requested = pyqtSignal()
-    uninstall_requested = pyqtSignal(str)        # module_name
+    uninstall_requested = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -39,9 +35,11 @@ class ModuleSetupWindow(QWidget):
 
         # Jazykový manažér
         LanguageManager.connect_language_changed(self.retranslate_ui)
+        
+        # OPRAVA BUGU: Okamžitý preklad prvkov okna hneď pri vytvorení!
+        self.retranslate_ui()
 
     def paintEvent(self, event):
-        """Vykreslenie QSS pozadia."""
         opt = QStyleOption()
         opt.initFrom(self)
         painter = QPainter(self)
@@ -49,11 +47,6 @@ class ModuleSetupWindow(QWidget):
         super().paintEvent(event)
 
     def populate_modules_list(self, all_modules_status: dict):
-        """
-        Naplní zoznam modulov (volá ModuleSetupController).
-        all_modules_status = {module_name: is_enabled, ...}
-        """
-        # Vyčistenie starých položiek z layoutu
         self._clear_modules_layout()
         self.module_items.clear()
 
@@ -66,19 +59,16 @@ class ModuleSetupWindow(QWidget):
             self.modules_layout.addWidget(item)
             self.module_items.append(item)
 
-        # Pružný spacer na spodok, aby položky neboli roztiahnuté po celej výške
         spacer = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
         self.modules_layout.addItem(spacer)
 
     def _clear_modules_layout(self):
-        """Bezpečne odstráni všetky widgety zo zoznamu."""
         while self.modules_layout.count():
             child = self.modules_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
 
     def _on_apply_clicked(self):
-        """Zozbiera stav všetkých checkboxov a vyšle signál."""
         new_status = {}
         for item in self.module_items:
             new_status[item.module_name] = item.is_checked()

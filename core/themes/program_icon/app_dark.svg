@@ -1,0 +1,43 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a1c23"/>
+      <stop offset="100%" stop-color="#101114"/>
+    </linearGradient>
+
+    <linearGradient id="neonCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2fe"/>
+      <stop offset="100%" stop-color="#4facfe"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Pozadie -->
+  <rect x="10" y="10" width="236" height="236" rx="48" fill="url(#bgDark)" stroke="#262a34" stroke-width="4"/>
+
+  <!-- Zbernice jadra (Bus tracks) -->
+  <g stroke="#00f2fe" stroke-width="4" stroke-opacity="0.3" stroke-linecap="round">
+    <line x1="128" y1="36" x2="128" y2="60"/>
+    <line x1="72" y1="88" x2="50" y2="88"/>
+    <line x1="184" y1="88" x2="206" y2="88"/>
+  </g>
+
+  <!-- Hlavný centrálny čip / Jadro (Core Hex-Box) -->
+  <g transform="translate(83, 44)">
+    <!-- Vonkajší obal čipu -->
+    <rect x="0" y="0" width="90" height="90" rx="22" fill="#20242e" stroke="url(#neonCyan)" stroke-width="5"/>
+    
+    <!-- Vnútorné modulárne piny -->
+    <rect x="18" y="18" width="22" height="22" rx="6" fill="#4facfe"/>
+    <rect x="50" y="18" width="22" height="22" rx="6" fill="#00f2fe"/>
+    <rect x="18" y="50" width="22" height="22" rx="6" fill="#00f2fe"/>
+    
+    <!-- Pripájajúci sa modul (akcent) -->
+    <rect x="50" y="50" width="22" height="22" rx="6" fill="#ffffff" fill-opacity="0.9"/>
+  </g>
+
+  <!-- Text CORE v štýle pôvodného "venv" -->
+  <text x="128" y="196" font-family="Segoe UI, Roboto, sans-serif" font-weight="900" font-size="62" fill="#00f2fe" text-anchor="middle" letter-spacing="4">CORE</text>
+
+  <!-- Podtitulok / Lišta -->
+  <text x="128" y="222" font-family="Segoe UI, Roboto, sans-serif" font-weight="700" font-size="14" fill="#6c7a89" text-anchor="middle" letter-spacing="8">MODULAR</text>
+</svg>

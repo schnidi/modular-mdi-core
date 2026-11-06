@@ -1,0 +1,540 @@
+=== ŠTRUKTÚRA PROJEKTU ===
+Ignorované vzory: .venv, venv, __pycache__, .git, .idea, .vscode, node_modules, dist
+
+theme_setup/
+├── languages/
+├── logic/
+├── resources/
+├── ui/
+├── windows/
+└── main_logic.py
+└── module_interface.py
+│   └── theme_setup_controller-01.py
+│   └── theme_setup_controller.py
+│   └── theme_icon.svg
+│   └── theme_setup_window.ui
+│   └── theme_setup_window.py
+
+==================================================
+
+--- SÚBOR: main_logic.py ---
+
+# Súbor: modules/theme_setup/main_logic.py
+
+# Importujeme View a Controller, ktoré sme práve vytvorili
+from .windows.theme_setup_window import ThemeSetupWindow
+from .logic.theme_setup_controller import ThemeSetupController
+
+def create_theme_setup_widget(**kwargs):
+    """
+    Továrenská funkcia, ktorú volá jadro na vytvorenie hlavného widgetu modulu.
+    Spojí dokopy View (okno) a Controller (logiku).
+    """
+    # 1. Vytvoríme inštanciu nášho okna (View)
+    view = ThemeSetupWindow()
+    
+    # 2. Vytvoríme inštanciu našej logiky (Controller) a prepojíme ju s oknom
+    controller = ThemeSetupController(view)
+    
+    # 3. Uložíme si referenciu na controller do view (dobrý zvyk pre ladenie)
+    view.controller = controller
+    
+    # 4. Vrátime hotový a funkčný widget jadru aplikácie
+    return view
+
+--- SÚBOR: module_interface.py ---
+
+# Súbor: modules/theme_setup/module_interface.py
+
+def _build_dynamic_paths(info: dict) -> dict:
+    """
+    Pomocná funkcia, ktorá doplní dynamicky generovanú cestu k továrni na widgety.
+    """
+    try:
+        path_parts = []
+        path_parts.append(info["module_name"])
+        path_parts.append(info["factory_module_name"])
+        path_parts.append(info["factory_function_name"])
+        
+        info["widget_factory_path"] = f"modules.{'.'.join(path_parts)}"
+        return info
+    except Exception as e:
+        print(f"CHYBA pri skladaní dynamických ciest pre {info.get('module_name', 'N/A')}: {e}")
+        return info
+
+def get_module_info():
+    """
+    Hlavná funkcia poskytujúca kompletné informácie o module pre jadro.
+    """
+    base_info = {
+        # Typ a identifikácia modulu
+        "module_type": "utility",
+        "module_name": "theme_setup",
+        "install_path_prefix": "",
+        "window_key": "ThemeSetup",
+        
+        # Továreň na widget
+        "factory_module_name": "main_logic",
+        "factory_function_name": "create_theme_setup_widget",
+        
+        
+        "menu_structure": {
+            "Nastavenie": [
+                {
+                    "text": "Vzhľad a Témy...",
+                    "requires_login": False
+                }
+            ]
+        },
+        
+        # Informácie pre ovládací panel
+        "control_panel_entry": {
+            "display_name": "Vzhľad a Témy",
+            "icon_path": "resources/theme_icon.svg"
+        }
+    }
+
+    return _build_dynamic_paths(base_info)
+
+--- SÚBOR: logic\theme_setup_controller-01.py ---
+
+# Súbor: modules/theme_setup/logic/theme_setup_controller.py (FINÁLNA VERZIA)
+
+from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox
+from pathlib import Path
+import configparser
+import shutil
+import re
+
+class ThemeSetupController:
+    DEFAULT_THEMES_DIR = Path("app/resources/styles/themes")
+    USER_THEMES_DIR = Path("config/user_themes")
+    CONFIG_FILE = Path("config/theme_settings.ini")
+
+    def __init__(self, view):
+        self.view = view
+        self.view.save_and_apply_theme_requested.connect(self.save_and_apply_theme)
+        self.view.add_theme_requested.connect(self.add_theme)
+        self.view.delete_theme_requested.connect(self.delete_theme)
+        
+        self.load_available_themes()
+
+    def _parse_theme_metadata(self, file_path: Path) -> dict:
+        metadata = {'ThemeName': file_path.name}
+        try:
+            with file_path.open('r', encoding='utf-8') as f:
+                header = "".join([next(f) for _ in range(10)])
+            name_match = re.search(r"@ThemeName:\s*(.*)", header)
+            if name_match:
+                metadata['ThemeName'] = name_match.group(1).strip()
+        except Exception:
+            pass
+        return metadata
+
+    def load_available_themes(self):
+        self.DEFAULT_THEMES_DIR.mkdir(parents=True, exist_ok=True)
+        self.USER_THEMES_DIR.mkdir(parents=True, exist_ok=True)
+        
+        themes_info = []
+        processed_files = set()
+
+        # Načítanie základných tém
+        for f in self.DEFAULT_THEMES_DIR.glob("*.qss"):
+            if f.name in processed_files: continue
+            metadata = self._parse_theme_metadata(f)
+            themes_info.append({
+                'filename': f.name,
+                'display_name': metadata['ThemeName'],
+                'is_deletable': False  # Základné nie sú mazateľné
+            })
+            processed_files.add(f.name)
+            
+        # Načítanie používateľských tém
+        for f in self.USER_THEMES_DIR.glob("*.qss"):
+            if f.name in processed_files: continue
+            metadata = self._parse_theme_metadata(f)
+            themes_info.append({
+                'filename': f.name,
+                'display_name': metadata['ThemeName'],
+                'is_deletable': True  # Používateľské sú mazateľné
+            })
+            processed_files.add(f.name)
+        
+        sorted_themes = sorted(themes_info, key=lambda x: x['display_name'])
+        self.view.populate_themes_list(sorted_themes)
+
+    def _apply_theme_logic(self, theme_filename: str):
+        path_to_apply = self.USER_THEMES_DIR / theme_filename
+        if not path_to_apply.exists():
+            path_to_apply = self.DEFAULT_THEMES_DIR / theme_filename
+        
+        if not path_to_apply.exists():
+            print(f"CHYBA: Súbor témy '{theme_filename}' nebol nájdený.")
+            return False
+
+        try:
+            style_sheet = path_to_apply.read_text(encoding='utf-8')
+            QApplication.instance().setStyleSheet(style_sheet)
+            return True
+        except Exception as e:
+            print(f"CHYBA pri aplikovaní témy '{theme_filename}': {e}")
+            return False
+
+    def save_and_apply_theme(self, theme_filename: str):
+        if self._apply_theme_logic(theme_filename):
+            config = configparser.ConfigParser()
+            config["Settings"] = {"active_theme": theme_filename}
+            with self.CONFIG_FILE.open("w", encoding='utf-8') as f:
+                config.write(f)
+            print(f"INFO: Téma '{theme_filename}' bola uložená ako aktívna.")
+
+    def add_theme(self):
+        filepath, _ = QFileDialog.getOpenFileName(self.view, "Vyberte súbor s témou", "", "QSS (*.qss)")
+        if not filepath: return
+        
+        source_path = Path(filepath)
+        dest_path = self.USER_THEMES_DIR / source_path.name
+        
+        if dest_path.exists():
+             if QMessageBox.question(self.view, "Súbor existuje", f"Téma '{source_path.name}' už existuje. Prepísať?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.No:
+                 return
+
+        try:
+            shutil.copy(source_path, dest_path)
+            self.load_available_themes()
+        except Exception as e:
+            QMessageBox.critical(self.view, "Chyba", f"Nepodarilo sa skopírovať súbor:\n{e}")
+
+    def delete_theme(self, theme_filename: str, is_deletable: bool):
+        if not is_deletable:
+            QMessageBox.warning(self.view, "Operácia zamietnutá", "Základné témy nie je možné zmazať.")
+            return
+            
+        if QMessageBox.question(self.view, "Potvrdenie", f"Naozaj zmazať tému '{theme_filename}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            try:
+                (self.USER_THEMES_DIR / theme_filename).unlink()
+                self.load_available_themes()
+            except Exception as e:
+                QMessageBox.critical(self.view, "Chyba", f"Nepodarilo sa zmazať súbor:\n{e}")
+
+--- SÚBOR: logic\theme_setup_controller.py ---
+
+# Súbor: modules/theme_setup/logic/theme_setup_controller.py
+
+from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox
+from pathlib import Path
+import shutil
+import re
+
+# Napojenie na cesty a spracovanie QSS z nového jadra
+from core._path import Paths
+from core.logic.skin_manager import SkinManager
+from core.logic.services.config_manager import ConfigManager
+from core.enum_core import ConfigSection, ConfigKey
+
+
+class ThemeSetupController:
+    def __init__(self, view):
+        self.view = view
+        
+        # Správne cesty nového jadra
+        self.default_themes_dir = Path(Paths.get_themes_dir())
+        self.user_themes_dir = Path(Paths.get_user_themes_dir())
+        self.config_manager = ConfigManager(Path(Paths.get_config_dir()) / "theme_settings.ini")
+
+        self.view.save_and_apply_theme_requested.connect(self.save_and_apply_theme)
+        self.view.add_theme_requested.connect(self.add_theme)
+        self.view.delete_theme_requested.connect(self.delete_theme)
+        
+        self.load_available_themes()
+
+    def _parse_theme_metadata(self, file_path: Path) -> dict:
+        metadata = {'ThemeName': file_path.stem}
+        try:
+            with file_path.open('r', encoding='utf-8') as f:
+                header = "".join([next(f) for _ in range(10)])
+            name_match = re.search(r"@ThemeName:\s*(.*)", header)
+            if name_match:
+                metadata['ThemeName'] = name_match.group(1).strip()
+        except Exception:
+            pass
+        return metadata
+
+    def load_available_themes(self):
+        self.default_themes_dir.mkdir(parents=True, exist_ok=True)
+        self.user_themes_dir.mkdir(parents=True, exist_ok=True)
+        
+        themes_info = []
+        processed_files = set()
+
+        # 1. Systémové témy z core/themes/skin/ (napr. dark.qss)
+        for f in self.default_themes_dir.glob("*.qss"):
+            if f.name in processed_files: 
+                continue
+            metadata = self._parse_theme_metadata(f)
+            themes_info.append({
+                'filename': f.name,
+                'display_name': metadata['ThemeName'],
+                'is_deletable': False
+            })
+            processed_files.add(f.name)
+            
+        # 2. Užívateľské témy z core/themes/user/
+        for f in self.user_themes_dir.glob("*.qss"):
+            if f.name in processed_files: 
+                continue
+            metadata = self._parse_theme_metadata(f)
+            themes_info.append({
+                'filename': f.name,
+                'display_name': metadata['ThemeName'],
+                'is_deletable': True
+            })
+            processed_files.add(f.name)
+        
+        sorted_themes = sorted(themes_info, key=lambda x: x['display_name'].lower())
+        self.view.populate_themes_list(sorted_themes)
+
+    def _apply_theme_logic(self, theme_filename: str) -> bool:
+        skin_name = Path(theme_filename).stem
+        
+        # Ak je to vlastná téma používateľa, spracujeme cesty cez Paths, aby nemizli ikony
+        user_theme_path = self.user_themes_dir / theme_filename
+        if user_theme_path.exists():
+            try:
+                raw_content = user_theme_path.read_text(encoding='utf-8')
+                processed_content = Paths.process_qss_paths(raw_content)
+                QApplication.instance().setStyleSheet(processed_content)
+                return True
+            except Exception as e:
+                print(f"[ThemeSetup] Chyba pri aplikovaní užívateľskej témy: {e}")
+                return False
+
+        # Pre základné témy použijeme SkinManager jadra
+        return SkinManager.apply_skin(skin_name)
+
+    def save_and_apply_theme(self, theme_filename: str):
+        if self._apply_theme_logic(theme_filename):
+            self.config_manager.set_value(
+                ConfigSection.SETTINGS, 
+                ConfigKey.ACTIVE_THEME, 
+                Path(theme_filename).stem
+            )
+            self.config_manager.save()
+
+    def add_theme(self):
+        filepath, _ = QFileDialog.getOpenFileName(self.view, "Vyberte súbor s témou", "", "QSS (*.qss)")
+        if not filepath: 
+            return
+        
+        source_path = Path(filepath)
+        dest_path = self.user_themes_dir / source_path.name
+        
+        if dest_path.exists():
+            reply = QMessageBox.question(
+                self.view, 
+                "Súbor existuje", 
+                f"Téma '{source_path.name}' už existuje. Prepísať?", 
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+
+        try:
+            shutil.copy(source_path, dest_path)
+            self.load_available_themes()
+        except Exception as e:
+            QMessageBox.critical(self.view, "Chyba", f"Nepodarilo sa skopírovať súbor:\n{e}")
+
+    def delete_theme(self, theme_filename: str, is_deletable: bool):
+        if not is_deletable:
+            QMessageBox.warning(self.view, "Operácia zamietnutá", "Základné témy nie je možné zmazať.")
+            return
+            
+        reply = QMessageBox.question(
+            self.view, 
+            "Potvrdenie", 
+            f"Naozaj zmazať tému '{theme_filename}'?", 
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                (self.user_themes_dir / theme_filename).unlink()
+                self.load_available_themes()
+            except Exception as e:
+                QMessageBox.critical(self.view, "Chyba", f"Nepodarilo sa zmazať súbor:\n{e}")
+
+--- SÚBOR: ui\theme_setup_window.ui ---
+
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ThemeSetupWindow</class>
+ <widget class="QWidget" name="ThemeSetupWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>500</width>
+    <height>400</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Správa Vzhľadu a Tém</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QLabel" name="label">
+     <property name="font">
+      <font>
+       <pointsize>11</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>Správa Vzhľadu a Tém</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QListWidget" name="listThemes"/>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_2">
+     <item>
+      <widget class="QPushButton" name="btnAddTheme">
+       <property name="text">
+        <string>Pridať tému (.qss)...</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnDeleteTheme">
+       <property name="text">
+        <string>Zmazať vybranú</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer_2">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout">
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnApplyTheme">
+       <property name="font">
+        <font>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>Uložiť a Aplikovať Tému</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
+
+--- SÚBOR: windows\theme_setup_window.py ---
+
+# Súbor: modules/theme_setup/windows/theme_setup_window.py (FINÁLNA VERZIA)
+
+from PyQt6.QtWidgets import QWidget, QListWidgetItem
+# --- TOTO JE KĽÚČOVÁ OPRAVA: PRIDANIE CHÝBAJÚCEHO IMPORTU ---
+from PyQt6.QtCore import pyqtSignal, Qt 
+# --- KONIEC OPRAVY ---
+from PyQt6 import uic
+from pathlib import Path
+from typing import List, Dict
+
+class ThemeSetupWindow(QWidget):
+    save_and_apply_theme_requested = pyqtSignal(str)
+    add_theme_requested = pyqtSignal()
+    delete_theme_requested = pyqtSignal(str, bool)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        ui_path = Path(__file__).parent.parent / "ui" / "theme_setup_window.ui"
+        uic.loadUi(ui_path, self)
+
+        self.controller = None
+        self.btnApplyTheme.clicked.connect(self._on_save_and_apply_clicked)
+        self.btnAddTheme.clicked.connect(self.add_theme_requested.emit)
+        self.btnDeleteTheme.clicked.connect(self._on_delete_clicked)
+        self.listThemes.currentItemChanged.connect(self.update_ui_state)
+
+    def populate_themes_list(self, themes: List[Dict]):
+        self.listThemes.clear()
+        for theme_info in themes:
+            display_name = theme_info['display_name']
+            filename = theme_info['filename']
+            is_deletable = theme_info['is_deletable']
+            
+            item_text = display_name
+            if not is_deletable:
+                item_text += " (základná)"
+            
+            item = QListWidgetItem(item_text)
+            
+            # Tento riadok teraz bude fungovať, lebo sme importovali Qt
+            item.setData(Qt.ItemDataRole.UserRole, {'filename': filename, 'is_deletable': is_deletable})
+            
+            self.listThemes.addItem(item)
+            
+        if self.listThemes.count() > 0:
+            self.listThemes.setCurrentRow(0)
+        self.update_ui_state()
+
+    def update_ui_state(self, current_item=None):
+        if not current_item:
+            current_item = self.listThemes.currentItem()
+        
+        is_deletable = False
+        if current_item:
+            data = current_item.data(Qt.ItemDataRole.UserRole)
+            is_deletable = data.get('is_deletable', False)
+            
+        self.btnDeleteTheme.setEnabled(is_deletable)
+
+    def _on_save_and_apply_clicked(self):
+        selected_item = self.listThemes.currentItem()
+        if selected_item:
+            data = selected_item.data(Qt.ItemDataRole.UserRole)
+            self.save_and_apply_theme_requested.emit(data['filename'])
+
+    def _on_delete_clicked(self):
+        selected_item = self.listThemes.currentItem()
+        if selected_item:
+            data = selected_item.data(Qt.ItemDataRole.UserRole)
+            self.delete_theme_requested.emit(data['filename'], data['is_deletable'])
+

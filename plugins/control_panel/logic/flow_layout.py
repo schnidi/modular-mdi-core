@@ -1,7 +1,11 @@
 # Súbor: modules/control_panel/logic/flow_layout.py
+"""
+Prispôsobivý FlowLayout s podporou vkladania na index (insertWidget).
+"""
 
-from PyQt6.QtWidgets import QLayout, QStyle, QWidgetItem
+from PyQt6.QtWidgets import QLayout, QWidgetItem
 from PyQt6.QtCore import Qt, QPoint, QRect, QSize
+
 
 class FlowLayout(QLayout):
     def __init__(self, parent=None):
@@ -16,25 +20,12 @@ class FlowLayout(QLayout):
     def addItem(self, item):
         self.itemList.append(item)
 
-    # --- ZAČIATOK ZMENY: Pridanie chýbajúcej metódy ---
     def insertWidget(self, index, widget):
-        """
-        Pridá widget do layoutu na špecifický index.
-        """
-        # Najprv pridáme widget štandardným spôsobom.
-        # Tým sa zabezpečí správne rodičovstvo a vytvorenie QWidgetItem.
-        # Widget sa dočasne pridá na koniec nášho zoznamu.
+        """Pridá widget do layoutu na špecifický index pre Drag & Drop."""
         self.addWidget(widget)
-        
-        # Teraz zoberieme položku z konca zoznamu...
         item = self.itemList.pop()
-        
-        # ... a vložíme ju na správne miesto určené indexom.
         self.itemList.insert(index, item)
-        
-        # Informujeme layout, že sa zmenil a je potrebné ho prekresliť.
         self.update()
-    # --- KONIEC ZMENY ---
 
     def count(self):
         return len(self.itemList)

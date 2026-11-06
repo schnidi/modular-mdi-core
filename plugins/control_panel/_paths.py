@@ -1,15 +1,12 @@
 # Súbor: modules/control_panel/_paths.py
-# Tento súbor slúži ako jediný zdroj pravdy pre všetky interné cesty v module.
-
 from pathlib import Path
 
-# Naša "kotva", ktorá sa nikdy nemení.
+# Dynamické zistenie koreňa tohto konkrétneho modulu
 MODULE_ROOT = Path(__file__).parent.resolve()
+MODULE_NAME = MODULE_ROOT.name
 
-# Odvodíme cesty k dôležitým podadresárom
 UI_DIR = MODULE_ROOT / "ui"
-CONFIG_DIR = MODULE_ROOT / "config" # Aj keď adresár neexistuje, cesta je platná
+UI_FILE_PATH = UI_DIR / "control_panel_window.ui"
 
-# Môžeme si zadefinovať aj priamu cestu ku konfiguračnému súboru
-# pre ešte čistejšie použitie v controlleri.
-PANEL_LAYOUT_CONFIG_FILE = CONFIG_DIR / "control_panel_layout.json"
+# PREMENOVANÉ: Jadro (ModuleTranslationService) hľadá presne túto konštantu
+TRANSLATIONS_DIR = MODULE_ROOT / "translations"

@@ -1,13 +1,10 @@
-"""
-Súbor: core/windows/custom_title_bar_mdi.py
-Vlastná lišta pre MDI pod-okná (FramelessMdiSubWindow).
-"""
+# Súbor: core/windows/custom_title_bar_mdi.py
 
 import os
 from PyQt6.QtWidgets import QWidget, QStyleOption, QStyle
 from PyQt6.QtGui import QPainter, QIcon
 from PyQt6 import uic
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt
 
 from core._path import Paths
 from core.logic.language_manager import LanguageManager
@@ -18,40 +15,38 @@ class CustomTitleBarMdi(QWidget):
         super().__init__(parent)
         self.parent_window = parent
 
-        # DÔLEŽITÉ PRE QSS: Presný názov zhodný so štýlmi
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setObjectName("CustomTitleBar")
 
         uic.loadUi(Paths.get_ui_file("custom_title_bar_mdi.ui"), self)
         self.lbl_icon.setScaledContents(False)
-        self.old_pos = None
 
-        # Vyčistenie textov z tlačidiel (ikony dodá výhradne QSS)
+        # Absolútne súradnice pre 100% plynulý drag bez straty subpixelov
+        self._drag_start_global = None
+        self._drag_start_window_pos = None
+
+        self.lbl_title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.lbl_icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
         self.btn_minimize.setText("")
         self.btn_maximize.setText("")
         self.btn_close.setText("")
 
-        # Počiatočný stav pre QSS
         self.btn_maximize.setProperty("maximized", "false")
 
         self.connect_signals()
         self.setup_from_parent()
 
-        if self.parent_window and hasattr(self.parent_window, 'windowTitleChanged'):
-            self.parent_window.windowTitleChanged.connect(self.lbl_title.setText)
-
         LanguageManager.connect_language_changed(self.retranslate_ui)
+        self.retranslate_ui()
 
     def paintEvent(self, event):
-        """Vykreslenie QSS štýlov pozadia."""
         opt = QStyleOption()
         opt.initFrom(self)
         p = QPainter(self)
         self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, opt, p, self)
-        super().paintEvent(event)
 
     def connect_signals(self):
-        """Čisté volanie logiky pod-okna."""
         self.btn_minimize.clicked.connect(self.parent_window.do_minimize)
         self.btn_maximize.clicked.connect(self.parent_window.handle_maximize_restore_button)
         self.btn_close.clicked.connect(self.parent_window.close)
@@ -59,18 +54,12 @@ class CustomTitleBarMdi(QWidget):
     def set_title(self, text: str):
         self.lbl_title.setText(text)
 
-    # =========================================================================
-    # INTELIGENTNÉ PREPÍNANIE IKONY MAXIMALIZE / RESTORE CEZ QSS
-    # =========================================================================
+    def set_minimized_state(self, is_minimized: bool):
+        if hasattr(self, 'btn_minimize'):
+            self.btn_minimize.setVisible(not is_minimized)
 
     def set_maximized_state(self, is_maximized: bool):
-        """
-        Nastaví vlastnosť 'maximized' pre QSS.
-        QSS samo rozhodne, či zobrazí čiernu alebo bielu ikonu podľa témy!
-        """
-        # Vyčistíme natvrdo nastavenú ikonu v Pythone, aby mal prednosť QSS štýl
         self.btn_maximize.setIcon(QIcon())
-        
         val = "true" if is_maximized else "false"
         if self.btn_maximize.property("maximized") != val:
             self.btn_maximize.setProperty("maximized", val)
@@ -79,61 +68,78 @@ class CustomTitleBarMdi(QWidget):
             self.btn_maximize.update()
 
     def set_maximize_icon(self, icon_filename: str):
-        """
-        Automatická oprava starých volaní z main_window_logic.py:
-        Zistí stav zo slova 'restore' a odovzdá riadenie QSS.
-        """
         is_max = "restore" in icon_filename.lower()
         self.set_maximized_state(is_max)
-
-    def _set_maximize_button_icon(self, icon_filename: str):
-        self.set_maximize_icon(icon_filename)
-
-    # =========================================================================
 
     def setup_from_parent(self):
         if self.parent_window and self.parent_window.windowTitle():
             self.lbl_title.setText(self.parent_window.windowTitle())
 
+        self.lbl_icon.setFixedSize(20, 20)
+
+        # 1. Ak ikonu nastavilo QSS (cez qproperty-pixmap), nerobíme nič a necháme QSS
+        current_pixmap = self.lbl_icon.pixmap()
+        if current_pixmap and not current_pixmap.isNull():
+            self.lbl_icon.show()
+            return
+
+        # 2. Bezpečný fallback natvrdo, ak v QSS pravidlo chýba
         icon_path = Paths.get_icon_path("app.ico")
         if os.path.exists(icon_path):
             icon = QIcon(icon_path)
-            size = 20
-            self.lbl_icon.setFixedSize(size, size)
-            smooth_pixmap = icon.pixmap(size, size)
+            smooth_pixmap = icon.pixmap(20, 20)
             self.lbl_icon.setPixmap(smooth_pixmap)
             self.lbl_icon.show()
         else:
             self.lbl_icon.hide()
 
     def retranslate_ui(self, lang_code: str = None):
-        LanguageManager.translate_ui(self)
-        if self.parent_window and self.parent_window.windowTitle():
-            self.lbl_title.setText(self.parent_window.windowTitle())
-
-    # ========================================================
-    # PRESÚVANIE MDI OKNA MYŠOU ZA LIŠTU
-    # ========================================================
+        if hasattr(self.parent_window, "client_widget") and self.parent_window.client_widget:
+            key = self.parent_window.client_widget.objectName()
+            new_title = LanguageManager.get(key)
+            if new_title and new_title != key:
+                self.set_title(new_title)
+                self.parent_window.setWindowTitle(new_title)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.old_pos = event.globalPosition().toPoint()
+            self._drag_start_global = event.globalPosition().toPoint()
+            self._drag_start_window_pos = self.parent_window.pos()
+            is_maximized = (
+                getattr(self.parent_window, '_is_maximized_mode', False)
+                or (getattr(self.parent_window, '_mode', '') == 'maximized')
+            )
+            if not is_maximized and hasattr(self.parent_window, 'start_title_drag'):
+                self.parent_window.start_title_drag(self._drag_start_global)
+            event.accept()
 
     def mouseMoveEvent(self, event):
-        is_maximized = getattr(self.parent_window, '_is_maximized_mode', False) or (getattr(self.parent_window, '_mode', '') == 'maximized')
-        if self.old_pos and not is_maximized:
-            delta = event.globalPosition().toPoint() - self.old_pos
-            self.parent_window.move(
-                self.parent_window.x() + delta.x(),
-                self.parent_window.y() + delta.y()
-            )
-            self.old_pos = event.globalPosition().toPoint()
+        is_maximized = (
+            getattr(self.parent_window, '_is_maximized_mode', False)
+            or (getattr(self.parent_window, '_mode', '') == 'maximized')
+        )
+        if self._drag_start_global is not None and not is_maximized and (event.buttons() & Qt.MouseButton.LeftButton):
+            if hasattr(self.parent_window, 'update_title_drag'):
+                self.parent_window.update_title_drag(event.globalPosition().toPoint())
+                event.accept()
+                return
+        super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        self.old_pos = None
+        if hasattr(self.parent_window, 'end_title_drag'):
+            self.parent_window.end_title_drag()
+        self._drag_start_global = None
+        self._drag_start_window_pos = None
         if hasattr(self.parent_window, 'controller') and self.parent_window.controller:
             self.parent_window.controller.save_states()
+        event.accept()
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.parent_window.handle_maximize_restore_button()
+
+
+# =========================================================================
+# POISTKA: Ak by niekto hľadal CustomTitleBar v tomto súbore, nespadne to!
+# =========================================================================
+CustomTitleBar = CustomTitleBarMdi

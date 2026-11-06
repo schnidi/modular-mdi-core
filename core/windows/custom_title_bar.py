@@ -1,5 +1,6 @@
 """
 Súbor: core/windows/custom_title_bar.py
+Centrálna lišta pre hlavné okno a dialógy.
 """
 
 import os
@@ -55,7 +56,8 @@ class CustomTitleBar(QWidget):
         self.btn_minimize.clicked.connect(self._on_minimize)
         self.btn_maximize.clicked.connect(self.toggle_maximize_restore)
         self.btn_close.clicked.connect(self.parent_window.close)
-        self.btn_about.clicked.connect(self.show_about_dialog)
+        if hasattr(self, 'btn_about'):
+            self.btn_about.clicked.connect(self.show_about_dialog)
 
         if hasattr(self, 'btn_update_github'):
             self.btn_update_github.clicked.connect(self.open_update_url)
@@ -70,55 +72,6 @@ class CustomTitleBar(QWidget):
         if hasattr(self.parent_window, 'handle_maximize_restore_button'):
             self.parent_window.handle_maximize_restore_button()
             return
-
-        if self.parent_window.isMaximized():
-            self.parent_window.showNormal()
-            self._set_maximize_button_icon("maximize_white.svg")
-        else:
-            self.parent_window.showMaximized()
-            self._set_maximize_button_icon("restore_white.svg")
-
-    def set_title(self, text: str):
-        self.lbl_title.setText(text)
-
-    def setup_from_parent(self):
-        if self.parent_window and self.parent_window.windowTitle():
-            self.lbl_title.setText(self.parent_window.windowTitle())
-
-        icon_path = Paths.get_icon_path("app.ico")
-        if os.path.exists(icon_path):
-            icon = QIcon(icon_path)
-            size = 20
-            self.lbl_icon.setFixedSize(size, size)
-            smooth_pixmap = icon.pixmap(size, size)
-            self.lbl_icon.setPixmap(smooth_pixmap)
-            self.lbl_icon.show()
-        else:
-            self.lbl_icon.hide()
-
-    def retranslate_ui(self, lang_code: str = None):
-        LanguageManager.translate_ui(self)
-        if self.parent_window and self.parent_window.windowTitle():
-            self.lbl_title.setText(self.parent_window.windowTitle())
-        self.refresh_update_button()
-
-    def refresh_update_button(self):
-        if not hasattr(self, 'btn_update_github'):
-            return
-        has_update = GitHubUpdate.get_status()
-        if has_update:
-            self.btn_update_github.show()
-        else:
-            self.btn_update_github.hide()
-
-    def open_update_url(self):
-        url_str = GitHubUpdate.get_download_url()
-        QDesktopServices.openUrl(QUrl(url_str))
-
-    def show_about_dialog(self):
-        AboutLogic.show_about_dialog(self.parent_window)
-
-    def toggle_maximize_restore(self):
         if hasattr(self.parent_window, 'toggle_maximize'):
             self.parent_window.toggle_maximize()
             return
@@ -136,9 +89,58 @@ class CustomTitleBar(QWidget):
             self.btn_maximize.setIcon(QIcon(icon_path))
             self.btn_maximize.setIconSize(QSize(12, 12))
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.old_pos = event.globalPosition().toPoint()
+    def set_title(self, text: str):
+        self.lbl_title.setText(text)
+
+    def setup_from_parent(self):
+        if self.parent_window and self.parent_window.windowTitle():
+            self.lbl_title.setText(self.parent_window.windowTitle())
+
+        self.lbl_icon.setFixedSize(20, 20)
+
+        # 1. Ak ikonu nastavilo QSS (cez qproperty-pixmap), nerobíme nič a necháme QSS
+        current_pixmap = self.lbl_icon.pixmap()
+        if current_pixmap and not current_pixmap.isNull():
+            self.lbl_icon.show()
+            return
+
+        # 2. Bezpečný fallback natvrdo, ak v QSS pravidlo chýba
+        icon_path = Paths.get_icon_path("app.ico")
+        if os.path.exists(icon_path):
+            icon = QIcon(icon_path)
+            smooth_pixmap = icon.pixmap(20, 20)
+            self.lbl_icon.setPixmap(smooth_pixmap)
+            self.lbl_icon.show()
+        else:
+            self.lbl_icon.hide()
+
+    def retranslate_ui(self, lang_code: str = None):
+        if hasattr(self.parent_window, "client_widget") and self.parent_window.client_widget:
+            key = self.parent_window.client_widget.objectName()
+            mod_name = (
+                self.parent_window.client_widget.property("module_name")
+                or self.parent_window.property("module_name")
+            )
+            new_title = LanguageManager.get(key, module_id=mod_name)
+            if new_title and new_title != key:
+                self.set_title(new_title)
+                self.parent_window.setWindowTitle(new_title)
+
+    def refresh_update_button(self):
+        if not hasattr(self, 'btn_update_github'):
+            return
+        has_update = GitHubUpdate.get_status()
+        if has_update:
+            self.btn_update_github.show()
+        else:
+            self.btn_update_github.hide()
+
+    def open_update_url(self):
+        url_str = GitHubUpdate.get_download_url()
+        QDesktopServices.openUrl(QUrl(url_str))
+
+    def show_about_dialog(self):
+        AboutLogic.show_about_dialog(self.parent_window)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -146,16 +148,19 @@ class CustomTitleBar(QWidget):
             event.accept()
 
     def mouseMoveEvent(self, event):
-        is_maximized = getattr(self.parent_window, '_is_custom_maximized', False) or self.parent_window.isMaximized()
+        is_maximized = (
+            getattr(self.parent_window, '_is_custom_maximized', False)
+            or self.parent_window.isMaximized()
+        )
         if self.old_pos and not is_maximized and (event.buttons() & Qt.MouseButton.LeftButton):
             delta = event.globalPosition().toPoint() - self.old_pos
-            raw_target_pos = self.parent_window.pos() + delta
+            target_pos = self.parent_window.pos() + delta
 
-            # Vopred orežeme na mantinely — žiadny záblesk ani pretečenie nevznikne
-            from core.logic.services.window_bounds_manager import WindowBoundsManager
-            clamped_pos = WindowBoundsManager.get_clamped_position(self.parent_window, raw_target_pos)
+            if self.parent_window.parentWidget():
+                from core.logic.services.window_bounds_manager import WindowBoundsManager
+                target_pos = WindowBoundsManager.get_clamped_position(self.parent_window, target_pos)
 
-            self.parent_window.move(clamped_pos)
+            self.parent_window.move(target_pos)
             self.old_pos = event.globalPosition().toPoint()
             event.accept()
             return
@@ -165,9 +170,15 @@ class CustomTitleBar(QWidget):
         self.old_pos = None
         event.accept()
 
-    def mouseReleaseEvent(self, event):
-        self.old_pos = None
-
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.toggle_maximize_restore()
+
+
+# =========================================================================
+# POISTKA: Ak by niekto hľadal CustomTitleBarMdi v tomto súbore, nespadne to!
+# =========================================================================
+try:
+    from core.windows.custom_title_bar_mdi import CustomTitleBarMdi
+except ImportError:
+    CustomTitleBarMdi = CustomTitleBar

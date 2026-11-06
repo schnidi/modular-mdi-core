@@ -1,0 +1,14 @@
+{
+    "system_language.open_settings": "Language...",
+    
+    "LanguageSettingsWindow": "Language Settings",
+    "sys_lang_lbl_select": "Select application language:",
+    "sys_lang_combo": "List of available languages for the application interface.",
+    "sys_lang_btn_apply": "Apply",
+    "sys_lang_btn_close": "Close",
+    
+    "lang_sk_SK": "Slovak (SK)",
+    "lang_en_US": "English (US)",
+    "lang_de_DE": "German (DE)",
+    "lang_cs_CZ": "Czech (CZ)"
+}

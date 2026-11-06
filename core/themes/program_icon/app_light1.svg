@@ -1,0 +1,49 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Pozadie: Čistá moderná svetlá plocha -->
+    <linearGradient id="bgGradLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f0f2f5"/>
+    </linearGradient>
+
+    <!-- Hlboká modrá pre základné jadro -->
+    <linearGradient id="coreGradLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e60b5"/>
+      <stop offset="100%" stop-color="#154687"/>
+    </linearGradient>
+
+    <!-- Sýty tyrkys pre zásuvný plugin -->
+    <linearGradient id="pluginGradLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#0369a1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Pozadie aplikácie -->
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="url(#bgGradLight)" stroke="#d0d7de" stroke-width="4"/>
+
+  <!-- Centrálna zbernica (spojovacie dráhy) -->
+  <line x1="90" y1="90" x2="166" y2="166" stroke="#0284c7" stroke-width="6" stroke-linecap="round" stroke-opacity="0.2"/>
+  <line x1="166" y1="90" x2="90" y2="166" stroke="#1e60b5" stroke-width="6" stroke-linecap="round" stroke-opacity="0.2"/>
+
+  <!-- Blok 1: Hore vľavo (Základné jadro) -->
+  <rect x="52" y="52" width="68" height="68" rx="18" fill="url(#coreGradLight)"/>
+  <circle cx="86" cy="86" r="10" fill="#ffffff" fill-opacity="0.45"/>
+
+  <!-- Blok 2: Hore vpravo (Plugin modul) -->
+  <rect x="136" y="52" width="68" height="68" rx="18" fill="url(#pluginGradLight)"/>
+  <!-- Slot konektivity -->
+  <circle cx="170" cy="86" r="12" fill="#ffffff"/>
+  <circle cx="170" cy="86" r="6" fill="#0284c7"/>
+
+  <!-- Blok 3: Dole vľavo (Služby a Data) -->
+  <rect x="52" y="136" width="68" height="68" rx="18" fill="#e2e8f0"/>
+  <rect x="74" y="166" width="24" height="8" rx="4" fill="#64748b"/>
+
+  <!-- Blok 4: Dole vpravo (UI / MDI Engine) -->
+  <rect x="136" y="136" width="68" height="68" rx="18" fill="url(#coreGradLight)"/>
+  <circle cx="170" cy="170" r="10" fill="#ffffff" fill-opacity="0.45"/>
+
+  <!-- Stredový Core bod -->
+  <circle cx="128" cy="128" r="14" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+  <circle cx="128" cy="128" r

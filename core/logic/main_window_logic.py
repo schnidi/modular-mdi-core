@@ -1,14 +1,13 @@
 """
 Súbor: core/logic/main_window_logic.py
-Hlavný kontrolér pre správu MDI plochy a pod-okien s pamäťou plávajúceho stavu,
-presnou pixelovou geometriou (bez posunu o lištu), mantinelmi a aktívnou 6px zónou.
+Hlavný kontrolér pre správu MDI plochy a pod-okien.
 """
 
 import os
 import configparser
 from PyQt6.QtCore import QObject, QEvent, QByteArray, QTimer, Qt, QPoint, QRect
-from PyQt6.QtWidgets import QMdiSubWindow, QWidget, QVBoxLayout
-from PyQt6.QtGui import QCursor
+from PyQt6.QtGui import QPainter, QMouseEvent
+from PyQt6.QtWidgets import QMdiSubWindow, QWidget, QVBoxLayout, QApplication
 
 from core._path import Paths
 from core.logic.plugin.service_manager import ServiceManager
@@ -16,9 +15,45 @@ from core.windows.custom_title_bar_mdi import CustomTitleBarMdi
 from core.logic.services.window_bounds_manager import WindowBoundsManager
 
 
+class _MdiMoveGhost(QWidget):
+    """Natívne top-level okno so snímkou MDI pod-okna — DWM ho posúva bez prekresľovania QMdiArea."""
+
+    def __init__(self, pixmap, owner: "FramelessMdiSubWindow"):
+        super().__init__(None)
+        self._owner = owner
+        self._pixmap = pixmap
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Tool
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.NoDropShadowWindowHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self.setFixedSize(pixmap.size())
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
+        painter.drawPixmap(0, 0, self._pixmap)
+
+    def mouseMoveEvent(self, event):
+        self._owner.update_title_drag(event.globalPosition().toPoint())
+        event.accept()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._owner.end_title_drag()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
 class FramelessMdiSubWindow(QMdiSubWindow):
     MARGIN = 6
-    RESTORE_RATIO = 0.8  # 80 % plochy iba ako počiatočný fallback
+    RESTORE_RATIO = 0.8
+
+    MINIMIZED_WIDTH = 290
+    MINIMIZED_HEIGHT = 34
 
     def __init__(self, parent=None, controller=None):
         self.controller = controller
@@ -31,7 +66,12 @@ class FramelessMdiSubWindow(QMdiSubWindow):
         self._is_changing_mode = False
         self._is_clamping = False
         self._is_restoring = False
+        self._is_dragging = False
         self._floating_geometry = None
+        self._move_ghost = None
+        self._drag_ghost_active = False
+        self._drag_filter_installed = False
+        self._was_hidden_for_drag = False
 
         self.title_bar = None
         self.client_widget = None
@@ -41,45 +81,177 @@ class FramelessMdiSubWindow(QMdiSubWindow):
 
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.SubWindow)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)  # Natívny systémový atribút pre Hover
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.setMouseTracking(True)
 
     def setup_content(self, client_widget: QWidget, title: str = ""):
         self.client_widget = client_widget
-        
+
         self.container = QWidget(self)
         self.container.setObjectName("MdiContainer")
-        
+
         layout = QVBoxLayout(self.container)
         layout.setContentsMargins(1, 1, 1, 1)
         layout.setSpacing(0)
 
         self.title_bar = CustomTitleBarMdi(self)
-        if title:
-            self.title_bar.set_title(title)
-            self.setWindowTitle(title)
+
+        initial_title = self.client_widget.windowTitle() if self.client_widget.windowTitle() else title
+        if initial_title:
+            self.title_bar.set_title(initial_title)
+            self.setWindowTitle(initial_title)
+
+        self.client_widget.windowTitleChanged.connect(self.title_bar.set_title)
+        self.client_widget.windowTitleChanged.connect(self.setWindowTitle)
 
         layout.addWidget(self.title_bar, 0, Qt.AlignmentFlag.AlignTop)
         layout.addWidget(self.client_widget, 1)
         self.setWidget(self.container)
 
     def _update_floating_geometry(self):
-        """Aktualizuje plávajúci stav IBA keď je okno v normal režime, nemení sa stav a neobnovuje sa."""
+        """Aktualizuje plávajúci stav IBA keď je okno v normal režime."""
         if not self._is_changing_mode and not self._is_restoring and self._mode == "normal" and self.height() > 50:
             self._floating_geometry = self.geometry()
+
+    def _clamp_normal_geometry(self, geo: QRect) -> QRect:
+        mdi = self.mdiArea()
+        if not mdi:
+            return QRect(geo)
+        vw = mdi.viewport().width()
+        vh = mdi.viewport().height()
+        w = min(max(geo.width(), 200), vw)
+        h = min(max(geo.height(), 100 if self._mode != "minimized" else self.MINIMIZED_HEIGHT), vh)
+        if self._mode == "minimized":
+            w = min(self.MINIMIZED_WIDTH, vw)
+            h = min(self.MINIMIZED_HEIGHT, vh)
+        x = max(0, min(geo.x(), max(0, vw - w)))
+        y = max(0, min(geo.y(), max(0, vh - h)))
+        return QRect(x, y, w, h)
+
+    def _mdi_local_to_global(self, geo: QRect) -> QPoint:
+        mdi = self.mdiArea()
+        if not mdi:
+            return geo.topLeft()
+        return mdi.viewport().mapToGlobal(geo.topLeft())
+
+    def _install_drag_filter(self):
+        app = QApplication.instance()
+        if app and not self._drag_filter_installed:
+            app.installEventFilter(self)
+            self._drag_filter_installed = True
+
+    def _remove_drag_filter(self):
+        app = QApplication.instance()
+        if app and self._drag_filter_installed:
+            app.removeEventFilter(self)
+            self._drag_filter_installed = False
+
+    def _destroy_move_ghost(self):
+        ghost = self._move_ghost
+        self._move_ghost = None
+        self._drag_ghost_active = False
+        if ghost is not None:
+            ghost.releaseMouse()
+            ghost.hide()
+            ghost.deleteLater()
+
+    def _activate_move_ghost(self):
+        if self._drag_ghost_active:
+            return
+        self._drag_ghost_active = True
+        pixmap = self.grab()
+        self._move_ghost = _MdiMoveGhost(pixmap, self)
+        self._move_ghost.move(self.mapToGlobal(QPoint(0, 0)))
+        self._move_ghost.show()
+        self._move_ghost.raise_()
+        self._move_ghost.grabMouse()
+        self._was_hidden_for_drag = True
+        self.hide()
+
+    def start_title_drag(self, global_pos: QPoint):
+        self._is_dragging = True
+        self._drag_ghost_active = False
+        self._was_hidden_for_drag = False
+        self._drag_start_pos = QPoint(global_pos)
+        self._drag_start_geom = QRect(self.geometry())
+        self._install_drag_filter()
+
+    def update_title_drag(self, global_pos: QPoint):
+        if not self._is_dragging:
+            return
+        delta = global_pos - self._drag_start_pos
+        if not self._drag_ghost_active:
+            if delta.manhattanLength() < 4:
+                return
+            self._activate_move_ghost()
+
+        clamped = self._clamp_normal_geometry(self._drag_start_geom.translated(delta))
+        if self._move_ghost is not None:
+            self._move_ghost.move(self._mdi_local_to_global(clamped))
+
+    def end_title_drag(self):
+        if not self._is_dragging:
+            return
+        self._is_dragging = False
+        self._remove_drag_filter()
+
+        final_geo = QRect(self._drag_start_geom)
+        if self._move_ghost is not None and self.mdiArea():
+            local_tl = self.mdiArea().viewport().mapFromGlobal(self._move_ghost.pos())
+            final_geo.moveTopLeft(local_tl)
+
+        self._destroy_move_ghost()
+        self.setGeometry(self._clamp_normal_geometry(final_geo))
+        if self._was_hidden_for_drag:
+            self.show()
+            mdi = self.mdiArea()
+            if mdi:
+                mdi.setActiveSubWindow(self)
+        self._was_hidden_for_drag = False
+        self._update_floating_geometry()
+
+    def eventFilter(self, obj, event):
+        if self._is_dragging and isinstance(event, QMouseEvent):
+            if event.type() == QEvent.Type.MouseMove:
+                self.update_title_drag(event.globalPosition().toPoint())
+            elif (
+                event.type() == QEvent.Type.MouseButtonRelease
+                and event.button() == Qt.MouseButton.LeftButton
+            ):
+                self.end_title_drag()
+        return super().eventFilter(obj, event)
 
     # ========================================================
     # PRECHODY MEDZI STAVMI (PLÁVAJÚCI, MAX, MIN)
     # ========================================================
 
+    def _cancel_interactive_geometry(self):
+        if self._is_dragging:
+            self.end_title_drag()
+        if self._resizing:
+            self.releaseMouse()
+            if self.client_widget:
+                self.client_widget.setUpdatesEnabled(True)
+        self._is_dragging = False
+        self._resizing = False
+        self._resize_direction = None
+
     def do_maximize_100(self):
         """Maximalizuje okno na celú MDI plochu."""
+        self._cancel_interactive_geometry()
         if self._mode == "normal":
             self._update_floating_geometry()
 
         self._is_changing_mode = True
         self._mode = "maximized"
         try:
+            # Uvoľniť fixnú veľkosť
+            self.setMinimumSize(200, 100)
+            self.setMaximumSize(16777215, 16777215)
+
+            if self.client_widget:
+                self.client_widget.show()
+
             self.showNormal()
             mdi = self.mdiArea()
             if mdi:
@@ -89,14 +261,24 @@ class FramelessMdiSubWindow(QMdiSubWindow):
 
         if self.title_bar:
             self.title_bar.set_maximize_icon("restore_white.svg")
+            if hasattr(self.title_bar, 'set_minimized_state'):
+                self.title_bar.set_minimized_state(False)
 
         if self.controller:
             self.controller.save_states()
 
     def do_restore(self):
-        """Obnoví okno presne do jeho plávajúceho stavu (bez posunu o lištu)."""
+        """Obnoví okno presne do jeho plávajúceho stavu."""
+        self._cancel_interactive_geometry()
         self._is_changing_mode = True
         try:
+            # Uvoľniť fixnú veľkosť
+            self.setMinimumSize(200, 100)
+            self.setMaximumSize(16777215, 16777215)
+
+            if self.client_widget:
+                self.client_widget.show()
+
             self.showNormal()
             if self._floating_geometry and self._floating_geometry.isValid() and self._floating_geometry.height() > 50:
                 self.setGeometry(self._floating_geometry)
@@ -108,14 +290,17 @@ class FramelessMdiSubWindow(QMdiSubWindow):
 
         if self.title_bar:
             self.title_bar.set_maximize_icon("maximize_white.svg")
+            if hasattr(self.title_bar, 'set_minimized_state'):
+                self.title_bar.set_minimized_state(False)
 
         if self.controller:
             self.controller.save_states()
 
     def do_minimize(self):
-        """Zbalí okno do lišty."""
+        """Zbalí okno do lišty a zamkne ho na fixnú veľkosť."""
         if self._mode == "minimized":
             return
+        self._cancel_interactive_geometry()
 
         if self._mode == "normal":
             self._update_floating_geometry()
@@ -123,29 +308,36 @@ class FramelessMdiSubWindow(QMdiSubWindow):
         self._is_changing_mode = True
         self._mode = "minimized"
         try:
+            if self.client_widget:
+                self.client_widget.hide()
+
+            # ZAMKNÚŤ PEVNÚ VEĽKOSŤ: Úplne eliminuje akékoľvek chvenie rozmerov pri pohybe
+            self.setFixedSize(self.MINIMIZED_WIDTH, self.MINIMIZED_HEIGHT)
+
             self.showNormal()
             mdi = self.mdiArea()
             if mdi:
-                bottom_y = max(0, mdi.viewport().height() - 36)
-                self.setGeometry(self.x(), bottom_y, 220, 32)
+                bottom_y = max(0, mdi.viewport().height() - (self.MINIMIZED_HEIGHT + 4))
+                new_x = max(0, min(self.x(), mdi.viewport().width() - self.MINIMIZED_WIDTH))
+                self.move(new_x, bottom_y)
         finally:
             self._is_changing_mode = False
 
         if self.title_bar:
             self.title_bar.set_maximize_icon("maximize_white.svg")
+            if hasattr(self.title_bar, 'set_minimized_state'):
+                self.title_bar.set_minimized_state(True)
 
         if self.controller:
             self.controller.save_states()
 
     def handle_maximize_restore_button(self):
-        """Obsluha tlačidla Štvorec / Dve okienka."""
         if self._mode == "maximized":
             self.do_restore()
         else:
             self.do_maximize_100()
 
     def _apply_fallback_80(self):
-        """Počiatočný prepočet na 80 % (len pri prvom štarte)."""
         mdi = self.mdiArea()
         if mdi:
             new_w = max(400, int(mdi.viewport().width() * self.RESTORE_RATIO))
@@ -156,7 +348,6 @@ class FramelessMdiSubWindow(QMdiSubWindow):
             self._floating_geometry = self.geometry()
 
     def on_viewport_resized(self, vw: int, vh: int):
-        """Automaticky prispôsobí okno, keď sa zmenší alebo zväčší hlavné okno."""
         if vw <= 50 or vh <= 50 or self._is_restoring:
             return
 
@@ -170,9 +361,9 @@ class FramelessMdiSubWindow(QMdiSubWindow):
         elif self._mode == "minimized":
             self._is_changing_mode = True
             try:
-                bottom_y = max(0, vh - 36)
-                new_x = max(0, min(self.x(), vw - 220))
-                self.setGeometry(new_x, bottom_y, min(220, vw), 32)
+                bottom_y = max(0, vh - (self.MINIMIZED_HEIGHT + 4))
+                new_x = max(0, min(self.x(), vw - self.MINIMIZED_WIDTH))
+                self.move(new_x, bottom_y)
             finally:
                 self._is_changing_mode = False
 
@@ -182,11 +373,8 @@ class FramelessMdiSubWindow(QMdiSubWindow):
             cur_w = self.width()
             cur_h = self.height()
 
-            # Zmenšenie pri pretečení rozmerov
             new_w = min(cur_w, vw)
             new_h = min(cur_h, vh)
-            
-            # Vrátenie dnu pri vytlačení z plochy
             new_x = max(0, min(cur_x, vw - new_w))
             new_y = max(0, min(cur_y, vh - new_h))
 
@@ -199,11 +387,10 @@ class FramelessMdiSubWindow(QMdiSubWindow):
                 self._update_floating_geometry()
 
     # ========================================================
-    # NAŤAHOVANIE MYŠOU (RESIZE) & AKTÍVNA 6PX ZÓNA
+    # RESIZE MYŠOU & 6PX ZÓNA (IBA V NORMAL REŽIME)
     # ========================================================
 
     def _get_cursor_for_direction(self, direction: str) -> Qt.CursorShape:
-        """Priradí správny tvar šípky podľa smeru okraja."""
         cursor_map = {
             "top_left": Qt.CursorShape.SizeFDiagCursor, "bottom_right": Qt.CursorShape.SizeFDiagCursor,
             "top_right": Qt.CursorShape.SizeBDiagCursor, "bottom_left": Qt.CursorShape.SizeBDiagCursor,
@@ -231,8 +418,7 @@ class FramelessMdiSubWindow(QMdiSubWindow):
         return ""
 
     def event(self, event: QEvent) -> bool:
-        """Natívny Qt Hover systém - funguje 100% spoľahlivo ponad všetky deti okna."""
-        if event.type() == QEvent.Type.HoverMove and self._mode == "normal" and not self._resizing:
+        if event.type() == QEvent.Type.HoverMove and self._mode == "normal" and not self._resizing and not self._is_dragging:
             pos = event.position().toPoint()
             direction = self._get_direction(pos)
             if direction:
@@ -258,6 +444,9 @@ class FramelessMdiSubWindow(QMdiSubWindow):
                 self._resize_direction = direction
                 self._drag_start_pos = event.globalPosition().toPoint()
                 self._drag_start_geom = self.geometry()
+                if self.client_widget:
+                    self.client_widget.setUpdatesEnabled(False)
+                self.grabMouse()
                 self.setCursor(self._get_cursor_for_direction(direction))
                 event.accept()
                 return
@@ -287,8 +476,7 @@ class FramelessMdiSubWindow(QMdiSubWindow):
                 new_bottom = min(max_h, max(geom.top() + min_h, self._drag_start_geom.bottom() + delta.y()))
                 geom.setBottom(new_bottom)
 
-            self.setGeometry(geom)
-            self.setCursor(self._get_cursor_for_direction(self._resize_direction))
+            self.setGeometry(self._clamp_normal_geometry(geom))
             event.accept()
             return
 
@@ -305,13 +493,15 @@ class FramelessMdiSubWindow(QMdiSubWindow):
 
     def mouseReleaseEvent(self, event):
         if self._resizing:
+            self.releaseMouse()
+            if self.client_widget:
+                self.client_widget.setUpdatesEnabled(True)
             self._resizing = False
             self._resize_direction = None
             self._update_floating_geometry()
             if self.controller:
                 self.controller.save_states()
-            
-            # Aktualizácia kurzora po dokončení ťahania
+
             direction = self._get_direction(event.position().toPoint())
             if direction and self._mode == "normal":
                 self.setCursor(self._get_cursor_for_direction(direction))
@@ -321,12 +511,12 @@ class FramelessMdiSubWindow(QMdiSubWindow):
 
     def moveEvent(self, event):
         super().moveEvent(event)
-        if not self._is_changing_mode and not self._is_restoring and self._mode == "normal":
+        if not self._is_changing_mode and not self._is_restoring and not self._is_dragging and self._mode == "normal":
             self._update_floating_geometry()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if not self._is_restoring:
+        if not self._is_restoring and self._mode == "normal":
             self._update_floating_geometry()
 
 
@@ -338,75 +528,83 @@ class MainWindowController(QObject):
         self.view = view
         self.service_manager = ServiceManager.get_instance()
         self.config_path = os.path.join(Paths.get_config_dir(), "window_setup.ini")
-        
-        # REGISTRÁCIA SLUŽBY DO SERVICEMANAGERA (Z LOGICKEJ VRSTVY)
+
         self.service_manager.register_service("window_manager", self)
 
         self.sub_windows = {}
-        
+        self._last_active_sub = None
+
         self.save_timer = QTimer()
         self.save_timer.setSingleShot(True)
         self.save_timer.setInterval(300)
         self.save_timer.timeout.connect(self.save_all_states)
 
-        # Sledovanie zmeny veľkosti a kliknutia na pod-okná
         if hasattr(self.view, 'mdiArea') and self.view.mdiArea:
             self.view.mdiArea.viewport().installEventFilter(self)
             self.view.mdiArea.subWindowActivated.connect(self._on_sub_window_activated)
 
+    def _apply_active_style(self, sub, is_active: bool):
+        if not sub:
+            return
+        val = "true" if is_active else "false"
+
+        if sub.property("active") != val:
+            sub.setProperty("active", val)
+            sub.style().unpolish(sub)
+            sub.style().polish(sub)
+
+        w = sub.widget()
+        if w and w.property("active") != val:
+            w.setProperty("active", val)
+            w.style().unpolish(w)
+            w.style().polish(w)
+
+        title_bar = getattr(sub, 'title_bar', None)
+        if title_bar and title_bar.property("active") != val:
+            title_bar.setProperty("active", val)
+            title_bar.style().unpolish(title_bar)
+            title_bar.style().polish(title_bar)
+
+        sub.update()
+
     def _on_sub_window_activated(self, active_sub):
-        """Dynamicky nastaví 'active' vlastnosť pre QSS na kliknuté okno aj jeho kontajner."""
         if not hasattr(self.view, 'mdiArea') or not self.view.mdiArea:
             return
 
-        for sub in self.view.mdiArea.subWindowList():
-            is_active = (sub == active_sub)
-            val = "true" if is_active else "false"
+        if active_sub and (
+            getattr(active_sub, '_is_dragging', False)
+            or getattr(active_sub, '_resizing', False)
+        ):
+            return
 
-            # 1. Nastavenie priamo na MDI pod-okno
-            if sub.property("active") != val:
-                sub.setProperty("active", val)
-                sub.style().unpolish(sub)
-                sub.style().polish(sub)
+        previous = self._last_active_sub
+        if previous is active_sub:
+            return
 
-            # 2. Nastavenie na vnútorný kontajner (ktorý nesie rámček)
-            w = sub.widget()
-            if w and w.property("active") != val:
-                w.setProperty("active", val)
-                w.style().unpolish(w)
-                w.style().polish(w)
-
-            # 3. Nastavenie na titulkovú lištu
-            if hasattr(sub, 'title_bar') and sub.title_bar:
-                if sub.title_bar.property("active") != val:
-                    sub.title_bar.setProperty("active", val)
-                    sub.title_bar.style().unpolish(sub.title_bar)
-                    sub.title_bar.style().polish(sub.title_bar)
-
-            sub.update()
+        if previous and previous.parent():
+            self._apply_active_style(previous, False)
+        self._apply_active_style(active_sub, True)
+        self._last_active_sub = active_sub
 
     @staticmethod
     def rect_to_str(r: QRect) -> str:
-        """Prevedie QRect na jednoduchý reťazec x,y,w,h."""
         if not r or not r.isValid():
             return ""
         return f"{r.x()},{r.y()},{r.width()},{r.height()}"
 
     @staticmethod
     def str_to_rect(s: str) -> QRect | None:
-        """Prevedie reťazec x,y,w,h späť na QRect."""
         if not s:
             return None
         try:
             parts = [int(p.strip()) for p in s.split(",")]
-            if len(parts) == 4 and parts[2] > 50 and parts[3] > 50:
+            if len(parts) == 4 and parts[2] > 50 and parts[3] > 20:
                 return QRect(parts[0], parts[1], parts[2], parts[3])
         except Exception:
             pass
         return None
 
     def eventFilter(self, obj, event):
-        """Zachytáva zmenu veľkosti MDI plochy a prispôsobuje pod-okná."""
         if hasattr(self.view, 'mdiArea') and self.view.mdiArea and obj == self.view.mdiArea.viewport():
             if event.type() == QEvent.Type.Resize:
                 vw = event.size().width()
@@ -417,7 +615,6 @@ class MainWindowController(QObject):
         return super().eventFilter(obj, event)
 
     def restore_visual_state(self):
-        """Obnoví geometriu hlavného okna zo súboru .ini."""
         if not os.path.exists(self.config_path):
             return
 
@@ -429,8 +626,7 @@ class MainWindowController(QObject):
             if geom_hex:
                 self.view.restoreGeometry(QByteArray.fromHex(geom_hex.encode()))
 
-    def open_sub_window(self, window_key: str, widget_factory_func, window_title: str = "") -> FramelessMdiSubWindow:
-        """Otvorí pod-okno a nastaví presnú geometriu bez posunu."""
+    def open_sub_window(self, window_key: str, widget_factory_func, window_title: str = "", module_name: str = None) -> FramelessMdiSubWindow:
         if window_key in self.sub_windows:
             sub_window = self.sub_windows[window_key]
             if sub_window and sub_window.parent():
@@ -440,22 +636,24 @@ class MainWindowController(QObject):
                 self.view.mdiArea.setActiveSubWindow(sub_window)
                 return sub_window
 
-        # 1. Vytvorenie widgetu
         client_widget = widget_factory_func()
 
-        # 2. Vytvorenie FramelessMdiSubWindow
+        if module_name:
+            client_widget.setProperty("module_name", module_name)
+
         sub_window = FramelessMdiSubWindow(self.view.mdiArea, controller=self)
-        sub_window._is_restoring = True  # Zámok proti posunu pri štarte
+        if module_name:
+            sub_window.setProperty("module_name", module_name)
+
+        sub_window._is_restoring = True
         sub_window.setup_content(client_widget, window_title)
         self.view.mdiArea.addSubWindow(sub_window)
 
-        # AKTIVÁCIA CENTRÁLNEHO STRÁŽCU MANTINELOV
         WindowBoundsManager.guard_mdi_sub_window(
             sub_window,
             on_geometry_changed=lambda geo: self.save_states()
         )
 
-        # 3. Načítanie stavov z .ini
         config = configparser.ConfigParser()
         saved_mode = "normal"
         floating_rect = None
@@ -463,18 +661,13 @@ class MainWindowController(QObject):
         if os.path.exists(self.config_path):
             config.read(self.config_path, encoding='utf-8')
             if config.has_section(window_key):
-                # 1. Záznam: Plávajúci stav
                 geom_str = config.get(window_key, "floating_geometry", fallback=None)
                 floating_rect = self.str_to_rect(geom_str)
-
-                # 2. Záznam: Režim pri zatvorení
                 saved_mode = config.get(window_key, "mode", fallback="normal")
 
-        # 4. Sledovanie zatvorenia
         sub_window.destroyed.connect(lambda: self._on_sub_window_destroyed(window_key))
         self.sub_windows[window_key] = sub_window
 
-        # 5. Aplikácia plávajúcej veľkosti
         sub_window.show()
         if floating_rect and floating_rect.isValid():
             sub_window._floating_geometry = floating_rect
@@ -482,7 +675,6 @@ class MainWindowController(QObject):
         else:
             sub_window._apply_fallback_80()
 
-        # 6. Aplikácia režimu
         if saved_mode == "maximized":
             QTimer.singleShot(0, sub_window.do_maximize_100)
         elif saved_mode == "minimized":
@@ -490,7 +682,6 @@ class MainWindowController(QObject):
         else:
             sub_window._mode = "normal"
 
-        # Uvoľnenie zámku po vykreslení
         def _unlock():
             sub_window._is_restoring = False
             sub_window._update_floating_geometry()
@@ -504,6 +695,9 @@ class MainWindowController(QObject):
         return sub_window
 
     def _on_sub_window_destroyed(self, window_key: str):
+        gone = self.sub_windows.get(window_key)
+        if gone is self._last_active_sub:
+            self._last_active_sub = None
         if window_key in self.sub_windows:
             del self.sub_windows[window_key]
         self.save_states()
@@ -513,7 +707,6 @@ class MainWindowController(QObject):
         self.save_timer.start()
 
     def save_all_states(self):
-        """Zapíše presné pixelové súradnice do .ini súboru."""
         config = configparser.ConfigParser()
         if os.path.exists(self.config_path):
             config.read(self.config_path, encoding='utf-8')
@@ -526,14 +719,11 @@ class MainWindowController(QObject):
             if sub_win and sub_win.parent():
                 if not config.has_section(key):
                     config.add_section(key)
-                
+
                 config.set(key, "is_open", str(not sub_win.isHidden()))
                 config.set(key, "mode", sub_win._mode)
-                
-                # ZÁZNAM 1: Aktuálna presná geometria
                 config.set(key, "current_geometry", self.rect_to_str(sub_win.geometry()))
-                
-                # ZÁZNAM 2: Plávajúca geometria (pamäť rozmeru)
+
                 fg = sub_win._floating_geometry if sub_win._floating_geometry else sub_win.geometry()
                 config.set(key, "floating_geometry", self.rect_to_str(fg))
 

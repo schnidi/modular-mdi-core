@@ -1,5 +1,5 @@
 {
-    "version": "0.5",
-    "about_html_sk_SK": "<h2 style='color: #007acc;'>Modular_midi</h2><p><b>Verzia:</b> {version}</p><p><b>Autor:</b> Ing. Viliam Schneider</p><hr><p>Modular_midi core</p>",   
-    "about_html_en_US": "<h2 style='color: #007acc;'>Modular_midi</h2><p><b>Version:</b> {version}</p><p><b>Author:</b> Ing. Viliam Schneider</p><hr><p>Modular_midi core</p>"
+    "version": "0.6.00",
+    "about_html_sk_SK": "<h2 style='color: #007acc;'>Modular_core</h2><p><b>Verzia:</b> {version}</p><p><b>Autor:</b> Ing. Viliam Schneider</p><p><b>Partner / Nasadené v:</b> </p><hr><p>Modulárna aplikačná platforma a framework s viacoknovým MDI rozhraním, dynamickou správou zásuvných modulov a závislostí, rolami a oprávneniami, centralizovaným zbernicovým systémom služieb a lokalizáciou.</p>",
+    "about_html_en_US": "<h2 style='color: #007acc;'>Modular_core</h2><p><b>Version:</b> {version}</p><p><b>Author:</b> Ing. Viliam Schneider</p><p><b>Partner / Deployed at:</b> </p><hr><p>Modular application platform and framework featuring an MDI multi-window interface, dynamic plugin and dependency management, role-based access control, centralized service bus, and multi-language support.</p>"
 }

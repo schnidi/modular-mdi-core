@@ -1,0 +1,44 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Svetlé pozadie -->
+    <linearGradient id="bgLightHex" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f8fafc"/>
+    </linearGradient>
+
+    <!-- Sýty modrý gradient pre text a linky -->
+    <linearGradient id="blueCoreLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Pozadie -->
+  <rect x="10" y="10" width="236" height="236" rx="48" fill="url(#bgLightHex)" stroke="#cbd5e1" stroke-width="4"/>
+
+  <!-- Zbernice jadra -->
+  <g stroke="#0284c7" stroke-width="4" stroke-opacity="0.4" stroke-linecap="round">
+    <line x1="128" y1="36" x2="128" y2="60"/>
+    <line x1="72" y1="88" x2="50" y2="88"/>
+    <line x1="184" y1="88" x2="206" y2="88"/>
+  </g>
+
+  <!-- Centrálny čip / Jadro -->
+  <g transform="translate(83, 44)">
+    <rect x="0" y="0" width="90" height="90" rx="22" fill="#0f172a" stroke="url(#blueCoreLight)" stroke-width="4"/>
+    
+    <!-- Piny v čipe -->
+    <rect x="18" y="18" width="22" height="22" rx="6" fill="#38bdf8"/>
+    <rect x="50" y="18" width="22" height="22" rx="6" fill="#0284c7"/>
+    <rect x="18" y="50" width="22" height="22" rx="6" fill="#0284c7"/>
+    
+    <!-- Modulový akcent -->
+    <rect x="50" y="50" width="22" height="22" rx="6" fill="#ffffff"/>
+  </g>
+
+  <!-- Text CORE v kontrastnej tmavomodrej -->
+  <text x="128" y="196" font-family="Segoe UI, Roboto, sans-serif" font-weight="900" font-size="62" fill="#0f172a" text-anchor="middle" letter-spacing="4">CORE</text>
+
+  <!-- Podtitulok MODULAR -->
+  <text x="128" y="222" font-family="Segoe UI, Roboto, sans-serif" font-weight="700" font-size="14" fill="#64748b" text-anchor="middle" letter-spacing="8">MODULAR</text>
+</svg>

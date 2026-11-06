@@ -1,9 +1,6 @@
-"""
-Súbor: core/windows/main_window.py
-Čisté hlavné okno (View) bez biznis logiky.
-"""
+# Súbor: core/windows/main_window.py
 
-from PyQt6.QtWidgets import QWidget, QStyleOption, QStyle, QMenu
+from PyQt6.QtWidgets import QWidget, QStyleOption, QStyle, QMenu, QMdiArea
 from PyQt6.QtGui import QPainter
 from PyQt6.QtCore import Qt, QPoint, QRect, QEvent
 from PyQt6 import uic
@@ -15,7 +12,6 @@ from core.windows.module_setup_window import ModuleSetupWindow
 from core.logic.plugin.module_setup_controller import ModuleSetupController
 from core.logic.services.about_logic import AboutLogic
 from core.logic.language_manager import LanguageManager
-from core.logic.skin_manager import SkinManager
 from core.logic.main_window_logic import MainWindowController
 from core.logic.main_window_security import MainWindowSecurity
 
@@ -23,9 +19,28 @@ from core.logic.main_window_security import MainWindowSecurity
 class MainWindow(QWidget):
     MARGIN = 6
 
+    # Pevné menu jadra: názov atribútu (= kľúč v JSON prekladoch) -> predvolený text
+    _MENU_TITLES = {
+        "menu_file": "Program",
+        "menu_settings": "Nastavenie",
+        "menu_window": "Okno",
+        "menu_help": "Pomocník",
+    }
+
+    # Akcie pevných menu: názov atribútu (= kľúč v JSON prekladoch) -> predvolený text
+    _ACTION_TEXTS = {
+        "action_open_test": "Otvoriť testovacie okno",
+        "action_tile": "Dlaždice (Vedľa seba)",
+        "action_cascade": "Kaskáda",
+        "action_exit": "Ukončiť",
+        "action_minimize": "Minimalizovať",
+        "action_maximize": "Maximalizovať / Obnoviť",
+        "action_about": "O programe...",
+        "action_plugins": "Správca Modulov...",
+    }
+
     def __init__(self, startup_data=None):
         super().__init__()
-        
         self.startup_data = startup_data or {}
 
         # 1. Vzhľad a bezrámové okno
@@ -38,42 +53,55 @@ class MainWindow(QWidget):
         self._resize_direction = None
         self._drag_start_pos = QPoint()
         self._drag_start_geom = QRect()
-        
+
         # 2. Načítanie UI
         uic.loadUi(Paths.get_ui_file("main_window.ui"), self)
-        self.mdiArea.setBackground(Qt.GlobalColor.transparent)
-        
-        # Zapnutie sledovania myši a filtra na MDI ploche
-        self.mdiArea.viewport().setMouseTracking(True)
-        self.mdiArea.viewport().installEventFilter(self)
+
+        # Zrušenie transparentného štetca z .ui súboru
+        # Nastavíme štetec MDI plochy priamo na farbu pozadia z aktuálnej palety/QSS
+        self.mdiArea.setOption(QMdiArea.AreaOption.DontMaximizeSubWindowOnActivation, True)
+        self.mdiArea.setBackground(self.palette().window())
+
+        # Viewport MDI plochy musí mať zapnutý natívny QSS podklad
+        # a odstránený WA_OpaquePaintEvent, aby systém nezadržiaval staré snímky
+        viewport = self.mdiArea.viewport()
+        viewport.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+        viewport.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)
+        viewport.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        viewport.setAutoFillBackground(True)
+        viewport.setMouseTracking(True)
+        viewport.installEventFilter(self)
         self.menu_bar.setCursor(Qt.CursorShape.ArrowCursor)
-        
+
+        # Vypnutie scrollbarov
+        self.mdiArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.mdiArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
         # 3. Vlastná lišta
         self.title_bar = CustomTitleBar(self)
         self.title_bar_layout.addWidget(self.title_bar)
-        
-        # 4. KONTROLÉRY (Presné rozdelenie zodpovednosti!)
-        # Vizuálny kontrolér okien
+
+        # 4. Kontroléry
         self.controller = MainWindowController(self)
-        
-        # Základné menu Nastavenie
         self._setup_base_menus()
         self.connect_actions()
 
-        # Bezpečnostný kontrolér (rieši relácie, práva, odhlásenie a dynamické menu)
         self.security = MainWindowSecurity(self, self.controller, self.startup_data)
-        
-        # 5. Jazyk, Skin a obnova geometrie
+
+        # 5. Jazyk a obnova geometrie
         LanguageManager.connect_language_changed(self.retranslate_ui)
-        # SkinManager.apply_skin("dark")
         self.controller.restore_visual_state()
+        self.retranslate_ui()
 
     def _setup_base_menus(self):
         if hasattr(self, 'menu_file'):
-            self.menu_file.setTitle("Program")
+            self.menu_file.setTitle(LanguageManager.get("menu_file", "Program"))
 
-        self.menu_settings = QMenu("Nastavenie", self)
-        self.action_plugins = self.menu_settings.addAction("Správca Modulov...")
+        self.menu_settings = QMenu(LanguageManager.get("menu_settings", "Nastavenie"), self)
+        self.menu_settings.setObjectName("menu_settings")
+        self.action_plugins = self.menu_settings.addAction(
+            LanguageManager.get("action_plugins", "Správca Modulov...")
+        )
         self.action_plugins.triggered.connect(self.open_module_setup)
         self.menu_bar.insertMenu(self.menu_window.menuAction(), self.menu_settings)
 
@@ -93,10 +121,11 @@ class MainWindow(QWidget):
             view.controller = ModuleSetupController(view, main_controller=self.controller)
             return view
 
+        title = LanguageManager.get("ModuleSetupWindow", "Správa Modulov")
         self.controller.open_sub_window(
             window_key="ModuleSetup",
             widget_factory_func=factory,
-            window_title="Správca Modulov"
+            window_title=title
         )
 
     def open_test_window(self):
@@ -106,12 +135,7 @@ class MainWindow(QWidget):
             window_title="Testovací Modul"
         )
 
-    # ========================================================
-    # EVENTY OKNA A RESIZE (AKTÍVNA 6PX ZÓNA)
-    # ========================================================
-
     def _get_cursor_for_direction(self, direction: str) -> Qt.CursorShape:
-        """Priradí správny tvar šípky podľa smeru okraja."""
         cursor_map = {
             "top_left": Qt.CursorShape.SizeFDiagCursor, "bottom_right": Qt.CursorShape.SizeFDiagCursor,
             "top_right": Qt.CursorShape.SizeBDiagCursor, "bottom_left": Qt.CursorShape.SizeBDiagCursor,
@@ -137,8 +161,12 @@ class MainWindow(QWidget):
         return ""
 
     def eventFilter(self, obj, event):
-        """Inteligentné stráženie kurzora na MDI ploche pri okrajoch okna."""
         if obj == self.mdiArea.viewport() and not self._resizing:
+            # Ak používateľ práve ťahá alebo mení veľkosť MDI pod-okna, nezaťažujeme CPU kontrolou okrajov
+            active_sub = self.mdiArea.activeSubWindow()
+            if active_sub and (getattr(active_sub, '_is_dragging', False) or getattr(active_sub, '_resizing', False)):
+                return super().eventFilter(obj, event)
+
             if event.type() in (QEvent.Type.MouseMove, QEvent.Type.Enter):
                 pos_in_window = self.mapFromGlobal(event.globalPosition().toPoint())
                 direction = self._get_direction(pos_in_window)
@@ -208,8 +236,6 @@ class MainWindow(QWidget):
             self._resizing = False
             self._resize_direction = None
             self.controller.save_states()
-            
-            # Po pustení tlačidla aktualizujeme kurzor podľa aktuálnej polohy
             direction = self._get_direction(event.position().toPoint())
             if direction and not self.isMaximized():
                 self.setCursor(self._get_cursor_for_direction(direction))
@@ -234,8 +260,20 @@ class MainWindow(QWidget):
         self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, opt, painter, self)
         super().paintEvent(event)
 
+    def _retranslate_menus(self):
+        for attr, default in self._MENU_TITLES.items():
+            menu = getattr(self, attr, None)
+            if menu is not None:
+                menu.setTitle(LanguageManager.get(attr, default))
+
+        for attr, default in self._ACTION_TEXTS.items():
+            action = getattr(self, attr, None)
+            if action is not None:
+                action.setText(LanguageManager.get(attr, default))
+
     def retranslate_ui(self, lang_code=None):
-        LanguageManager.translate_ui(self)
+        LanguageManager.get_instance().translate_ui(self)
+        self._retranslate_menus()
 
     def closeEvent(self, event):
         self.controller.save_all_states()

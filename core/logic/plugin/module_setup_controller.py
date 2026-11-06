@@ -1,7 +1,4 @@
-"""
-Súbor: core/logic/plugin/module_setup_controller.py
-Kontrolér pre správu životného cyklu modulov (inštalácia zo ZIP, mazanie, aktivácia).
-"""
+# Súbor: core/logic/plugin/module_setup_controller.py
 
 import sys
 import zipfile
@@ -18,13 +15,12 @@ from core.logic.services.config_manager import ConfigManager
 from core.logic.module_manager import ModuleManager
 from core.logic.module_config import ModuleConfig
 from core.logic.group_manager import GroupManager
+from core.logic.language_manager import LanguageManager
 from core.enum_core import ConfigSection, ConfigKey
 from core.windows.custom_message_box import CustomMessageBox
 
 
 class ModuleSetupController:
-    """Kontrolér prepájajúci ModuleSetupWindow so systémom modulov a konfiguráciami."""
-
     class _Signals(QObject):
         modules_config_changed = pyqtSignal()
 
@@ -61,7 +57,6 @@ class ModuleSetupController:
                     module_path = Path(Paths.get_root()) / module_path
 
                 if not module_path.exists():
-                    print(f"[ModuleSetupController] Modul '{module_name}' neexistuje. Čistím záznam.")
                     self.module_config.remove_module(module_name)
                     self.group_manager.update_module_groups(module_name, {})
                     removed_count += 1
@@ -70,18 +65,13 @@ class ModuleSetupController:
             self.module_config.save()
 
     def _get_info_from_interface(self, interface_file: Path) -> dict | None:
-        """Načíta informácie z dočasného module_interface.py s ohľadom na importy."""
         if not interface_file.exists():
             return None
             
-        import sys
-        import traceback
-        
         module_dir = str(interface_file.parent.resolve())
         if module_dir not in sys.path:
             sys.path.insert(0, module_dir)
 
-        # Spätná kompatibilita pre importy
         if 'app.core' not in sys.modules:
             import core
             sys.modules['app'] = sys.modules.get('__main__', sys.modules[__name__]) 
@@ -98,8 +88,9 @@ class ModuleSetupController:
                 if hasattr(module_interface, "get_module_info"):
                     return module_interface.get_module_info()
         except Exception as e:
+            import traceback
             error_details = traceback.format_exc()
-            raise RuntimeError(f"Chyba pri kompilácii {interface_file.name}:\n\n{error_details}")
+            raise RuntimeError(f"Chyba pri čítaní {interface_file.name}:\n\n{error_details}")
         finally:
             if module_dir in sys.path:
                 sys.path.remove(module_dir)
@@ -112,7 +103,33 @@ class ModuleSetupController:
 
     def save_and_apply_changes(self, new_status: dict):
         self.module_config.reload()
-        
+
+        # 1. AUTO-AKTIVÁCIA ZÁVISLOSTÍ
+        auto_enabled_info = []
+        for mod_name, is_enabled in list(new_status.items()):
+            if is_enabled:
+                deps = self.module_manager.get_module_dependencies(mod_name)
+                for dep in deps:
+                    if dep in new_status and not new_status[dep]:
+                        new_status[dep] = True
+                        auto_enabled_info.append(f"Modul '{dep}' (vyžadovaný modulom '{mod_name}')")
+
+        # 2. OCHRANA DEAKTIVÁCIE
+        for mod_name, is_enabled in new_status.items():
+            if not is_enabled:
+                dependents = self.module_manager.get_dependents_of(mod_name)
+                active_dependents = [d for d in dependents if new_status.get(d, False)]
+                if active_dependents:
+                    title = LanguageManager.get("msg_dep_title", "Závislosť modulov")
+                    msg = LanguageManager.get(
+                        "msg_dep_cannot_disable",
+                        "Nemôžete deaktivovať modul '{0}', pretože ho vyžadujú nasledujúce aktívne moduly:\n\n• {1}\n\nNajprv deaktivujte tieto moduly."
+                    ).format(mod_name, ', '.join(active_dependents))
+                    CustomMessageBox.critical(self.view, title, msg)
+                    self.load_initial_state()
+                    return
+
+        # 3. Kontrola AUTH modulov (max 1)
         active_auth_modules_names = []
         for name, enabled in new_status.items():
             if enabled:
@@ -121,11 +138,9 @@ class ModuleSetupController:
                     active_auth_modules_names.append(name)
         
         if len(active_auth_modules_names) > 1:
-            CustomMessageBox.critical(
-                self.view, 
-                "Chyba konfigurácie", 
-                "Môže byť aktívny maximálne JEDEN autentifikačný modul!"
-            )
+            title = LanguageManager.get("msg_config_error_title", "Chyba konfigurácie")
+            msg = LanguageManager.get("msg_err_max_one_auth", "Môže byť aktívny maximálne JEDEN autentifikačný modul!")
+            CustomMessageBox.critical(self.view, title, msg)
             return
 
         active_auth_module = active_auth_modules_names[0] if active_auth_modules_names else None
@@ -137,11 +152,9 @@ class ModuleSetupController:
         if active_auth_module:
             setup_successful = self._run_first_time_setup(active_auth_module)
             if not setup_successful:
-                CustomMessageBox.warning(
-                    self.view, 
-                    "Prerušené", 
-                    "Nastavenie modulu nebolo dokončené."
-                )
+                title = LanguageManager.get("msg_aborted_title", "Prerušené")
+                msg = LanguageManager.get("msg_setup_incomplete", "Nastavenie modulu nebolo dokončené.")
+                CustomMessageBox.warning(self.view, title, msg)
                 self.load_initial_state() 
                 return
 
@@ -152,51 +165,21 @@ class ModuleSetupController:
         self.auth_settings_config.set_value(ConfigSection.SETTINGS, ConfigKey.ACTIVE_AUTH_MODULE, active_auth_module or "")
         self.auth_settings_config.save()
 
+        self.load_initial_state()
         self.signals.modules_config_changed.emit()
-        CustomMessageBox.information(
-            self.view, 
-            "Hotovo", 
-            "Zmeny v moduloch a systémové skupiny boli úspešne aplikované."
-        )
 
-    def _run_first_time_setup(self, module_name: str) -> bool:
-        try:
-            self.module_config.reload()
-            module_path_str = self.module_config.get_module_path(module_name)
-            
-            if not module_path_str:
-                raise FileNotFoundError("Chýba cesta k modulu v konfigurácii.")
-                
-            module_path = Path(module_path_str)
-            if not module_path.is_absolute():
-                module_path = Path(Paths.get_root()) / module_path
+        msg = LanguageManager.get("msg_modules_saved_ok", "Zmeny v moduloch boli úspešne aplikované.")
+        if auto_enabled_info:
+            msg += "\n\n" + LanguageManager.get("msg_auto_enabled_deps", "Automaticky boli aktivované tieto závislosti:\n• ") + "\n• ".join(auto_enabled_info)
 
-            interface_file = module_path / "module_interface.py"
-            info = self._get_info_from_interface(interface_file)
-            if not info:
-                return True
-
-            setup_path = info.get("setup_function_path")
-            if setup_path:
-                mod_path, func_name = setup_path.rsplit('.', 1)
-                module = importlib.import_module(mod_path)
-                setup_func = getattr(module, func_name)
-                return setup_func()
-            
-            return True
-
-        except Exception as e:
-            CustomMessageBox.critical(
-                self.view,
-                "Upozornenie", 
-                f"Nepodarilo sa spustiť počiatočné nastavenie pre modul '{module_name}'.",
-                detailed_text=str(e)
-            )
-            return False 
+        title = LanguageManager.get("msg_done_title", "Hotovo")
+        CustomMessageBox.information(self.view, title, msg)
 
     def handle_install(self, file_path=None):
         if not file_path:
-            file_path, _ = QFileDialog.getOpenFileName(self.view, "Vyberte .zip archív s modulom", "", "ZIP archívy (*.zip)")
+            dialog_title = LanguageManager.get("dialog_select_zip", "Vyberte .zip archív s modulom")
+            file_filter = LanguageManager.get("filter_zip_archives", "ZIP archívy (*.zip)")
+            file_path, _ = QFileDialog.getOpenFileName(self.view, dialog_title, "", file_filter)
         if not file_path:
             return
 
@@ -211,7 +194,7 @@ class ModuleSetupController:
                     None
                 )
                 if not interface_path_in_zip:
-                    raise ValueError("Archív neobsahuje povinný súbor 'module_interface.py'.")
+                    raise ValueError(LanguageManager.get("err_zip_no_interface", "Archív neobsahuje povinný súbor 'module_interface.py'."))
 
                 module_name = Path(interface_path_in_zip).parent.name
                 temp_dir.mkdir(parents=True, exist_ok=True)
@@ -222,14 +205,29 @@ class ModuleSetupController:
             
             info = self._get_info_from_interface(interface_file)
             if not info:
-                raise ValueError(f"Nepodarilo sa načítať informácie z module_interface.py pre '{module_name}'.")
+                raise ValueError(LanguageManager.get("err_read_interface_fail", "Nepodarilo sa načítať informácie z module_interface.py pre '{0}'.").format(module_name))
+
+            dependencies = info.get("dependencies", [])
+            if dependencies:
+                self.module_config.reload()
+                installed_modules = self.module_config.config.sections()
+                missing_deps = [dep for dep in dependencies if dep not in installed_modules]
+                
+                if missing_deps:
+                    title = LanguageManager.get("msg_install_denied_title", "Inštalácia zamietnutá")
+                    msg = LanguageManager.get(
+                        "msg_install_missing_deps",
+                        "Modul '{0}' nie je možné nainštalovať!\n\nVyžaduje nasledujúce chýbajúce moduly, ktoré nie sú v systéme:\n• {1}\n\nNainštalujte prosím najprv požadované moduly."
+                    ).format(module_name, ', '.join(missing_deps))
+                    CustomMessageBox.critical(self.view, title, msg)
+                    return
 
             install_prefix = info.get("install_path_prefix", "")
             target_dir = self.modules_dir / install_prefix if install_prefix else self.modules_dir
             final_path = target_dir / module_name
 
             if final_path.exists():
-                raise ValueError(f"Modul '{module_name}' je už na ceste '{final_path}' nainštalovaný.")
+                raise ValueError(LanguageManager.get("err_module_exists", "Modul '{0}' je už na ceste '{1}' nainštalovaný.").format(module_name, final_path))
 
             target_dir.mkdir(parents=True, exist_ok=True)
             shutil.move(str(temp_module_root), str(final_path))
@@ -248,31 +246,34 @@ class ModuleSetupController:
             if provided_groups:
                 self.group_manager.update_module_groups(module_name, provided_groups)
             
-            CustomMessageBox.information(
-                self.view, 
-                "Úspech", 
-                f"Modul '{module_name}' bol úspešne nainštalovaný."
-            )
+            title = LanguageManager.get("msg_success_title", "Úspech")
+            msg = LanguageManager.get("msg_module_installed_ok", "Modul '{0}' bol úspešne nainštalovaný.").format(module_name)
+            CustomMessageBox.information(self.view, title, msg)
             self.load_initial_state()
             self.signals.modules_config_changed.emit()
 
         except Exception as e:
-            CustomMessageBox.critical(
-                self.view,
-                "Chyba pri inštalácii",
-                "Nastala neočakávaná chyba:",
-                detailed_text=str(e)
-            )
+            title = LanguageManager.get("msg_err_install_title", "Chyba pri inštalácii")
+            main_text = LanguageManager.get("msg_unexpected_error", "Nastala neočakávaná chyba:")
+            CustomMessageBox.critical(self.view, title, main_text, detailed_text=str(e))
         finally:
             if temp_dir.exists():
                 shutil.rmtree(temp_dir, ignore_errors=True)
-                
+
     def handle_uninstall(self, module_name: str):
-        if not CustomMessageBox.question(
-            self.view, 
-            "Potvrdenie zmazania", 
-            f"Naozaj chcete permanentne zmazať modul '{module_name}'?"
-        ):
+        dependents = self.module_manager.get_dependents_of(module_name)
+        if dependents:
+            title = LanguageManager.get("msg_uninstall_denied_title", "Odinštalácia zamietnutá")
+            msg = LanguageManager.get(
+                "msg_uninstall_has_dependents",
+                "Nemôžete odinštalovať modul '{0}', pretože na ňom závisia nasledujúce nainštalované moduly:\n\n• {1}\n\nNajprv odinštalujte tieto závislé moduly."
+            ).format(module_name, ', '.join(dependents))
+            CustomMessageBox.critical(self.view, title, msg)
+            return
+
+        confirm_title = LanguageManager.get("msg_confirm_delete_title", "Potvrdenie zmazania")
+        confirm_msg = LanguageManager.get("msg_confirm_delete", "Naozaj chcete permanentne zmazať modul '{0}'?").format(module_name)
+        if not CustomMessageBox.question(self.view, confirm_title, confirm_msg):
             return
         
         try:
@@ -302,20 +303,47 @@ class ModuleSetupController:
                 self.auth_settings_config.set_value(ConfigSection.SETTINGS, ConfigKey.ACTIVE_AUTH_MODULE, "")
                 self.auth_settings_config.save()
             
-            CustomMessageBox.information(
-                self.view, 
-                "Úspech", 
-                f"Modul '{module_name}' bol úspešne odinštalovaný."
-            )
+            title = LanguageManager.get("msg_success_title", "Úspech")
+            msg = LanguageManager.get("msg_module_uninstalled_ok", "Modul '{0}' bol úspešne odinštalovaný.").format(module_name)
+            CustomMessageBox.information(self.view, title, msg)
             
             self._synchronize_config_with_disk()
             self.load_initial_state()
             self.signals.modules_config_changed.emit()
             
         except Exception as e: 
-            CustomMessageBox.critical(
-                self.view,
-                "Chyba pri odinštalácii",
-                "Nastala neočakávaná chyba:",
-                detailed_text=str(e)
-            )
+            title = LanguageManager.get("msg_err_uninstall_title", "Chyba pri odinštalácii")
+            main_text = LanguageManager.get("msg_unexpected_error", "Nastala neočakávaná chyba:")
+            CustomMessageBox.critical(self.view, title, main_text, detailed_text=str(e))
+
+    def _run_first_time_setup(self, module_name: str) -> bool:
+        try:
+            self.module_config.reload()
+            module_path_str = self.module_config.get_module_path(module_name)
+            
+            if not module_path_str:
+                raise FileNotFoundError("Chýba cesta k modulu v konfigurácii.")
+                
+            module_path = Path(module_path_str)
+            if not module_path.is_absolute():
+                module_path = Path(Paths.get_root()) / module_path
+
+            interface_file = module_path / "module_interface.py"
+            info = self._get_info_from_interface(interface_file)
+            if not info:
+                return True
+
+            setup_path = info.get("setup_function_path")
+            if setup_path:
+                mod_path, func_name = setup_path.rsplit('.', 1)
+                module = importlib.import_module(mod_path)
+                setup_func = getattr(module, func_name)
+                return setup_func()
+            
+            return True
+
+        except Exception as e:
+            title = LanguageManager.get("msg_warning_title", "Upozornenie")
+            msg = LanguageManager.get("msg_setup_failed", "Nepodarilo sa spustiť počiatočné nastavenie pre modul '{0}'.").format(module_name)
+            CustomMessageBox.critical(self.view, title, msg, detailed_text=str(e))
+            return False

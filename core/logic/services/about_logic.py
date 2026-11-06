@@ -56,7 +56,8 @@ class AboutLogic:
     @classmethod
     def get_about_html(cls) -> str:
         """Načíta súbor about.json, dosadí reálnu verziu za {version} a vráti HTML podľa jazyka."""
-        json_path = os.path.join(Paths.get_base_path(), Paths.ASSETS_DIR_NAME, "about.json")
+        # ZMENA: Použitie centrálnej cesty odolnej voči EXE/NSIS
+        json_path = Paths.get_about_json_path()
         html_content = LanguageManager.get("about_fallback_html", "<p>O programe</p>")
         app_version = cls.get_app_version()
         

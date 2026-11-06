@@ -1,86 +1,102 @@
 # Súbor: modules/control_panel/module_interface.py
-# OPRAVENÁ VERZIA, KTORÁ SPRÁVNE ZAOBCHÁDZA S 'provided_groups'
 
-"""
-Rozhranie pre modul 'Ovládací panel'.
-Využíva dynamické skladanie ciest pre jednoduchú prenositeľnosť.
-"""
+from pathlib import Path
+from core.enum_core import ModuleInfoKey
+
+
+def _get_dynamic_base_import_path() -> str:
+    """Zistí koreňový importovací reťazec modulu (napr. 'modules.control_panel')."""
+    try:
+        module_dir = Path(__file__).parent.resolve()
+        parts = module_dir.parts
+        if "modules" in parts:
+            modules_index = parts.index("modules")
+            sub_parts = parts[modules_index:]
+            return ".".join(sub_parts)
+        else:
+            return f"modules.{module_dir.name}"
+    except Exception:
+        return "modules.control_panel"
+
 
 def _build_dynamic_paths(info: dict) -> dict:
-    """
-    Pomocná funkcia, ktorá na základe názvu modulu a prefixu automaticky
-    vyskladá plné cesty k triedam a funkciám.
-    Je to generická funkcia, ktorú je možné použiť vo všetkých moduloch.
-    """
+    """Nahradí {base_path} v kľúčoch a položkách menu za skutočnú importovaciu cestu."""
     try:
-        path_parts = ["modules"]
-        prefix = info.get("install_path_prefix", "")
-        
-        if prefix:
-            path_parts.append(prefix.replace('\\', '/').replace('/', '.'))
-        
-        path_parts.append(info["module_name"])
-        base_path = ".".join(path_parts)
+        base_path = _get_dynamic_base_import_path()
 
-        if "widget_factory_path" in info:
-            info["widget_factory_path"] = info["widget_factory_path"].format(base_path=base_path)
-        
+        path_keys = [
+            ModuleInfoKey.PATHS_MODULE_PATH.value,
+            ModuleInfoKey.WIDGET_FACTORY_PATH.value,
+            ModuleInfoKey.BOOTSTRAP_FUNCTION_PATH.value,
+            ModuleInfoKey.SETUP_FUNCTION_PATH.value,
+            ModuleInfoKey.AUTH_WIDGET_FACTORY_PATH.value,
+        ]
+
+        for key in path_keys:
+            if key in info and isinstance(info[key], str):
+                info[key] = info[key].format(base_path=base_path)
+
+        if "menu_structure" in info and isinstance(info["menu_structure"], dict):
+            for menu_items in info["menu_structure"].values():
+                for item in menu_items:
+                    if isinstance(item, dict):
+                        if "widget_factory_path" in item and isinstance(item["widget_factory_path"], str):
+                            item["widget_factory_path"] = item["widget_factory_path"].format(base_path=base_path)
+                        if "handler_path" in item and isinstance(item["handler_path"], str):
+                            item["handler_path"] = item["handler_path"].format(base_path=base_path)
+
         return info
     except Exception as e:
-        print(f"CHYBA: Zlyhalo dynamické skladanie ciest pre modul {info.get('module_name')}: {e}")
+        print(f"[control_panel] CHYBA: Zlyhalo dynamické skladanie ciest: {e}")
         return info
 
-def get_module_info():
-    """
-    Hlavná funkcia, ktorú volá jadro.
-    """
-    # ======================================================================
-    # ČASŤ 1: KONFIGURÁCIA - Toto je jediné miesto, ktoré treba upraviť
-    # ======================================================================
+
+def get_module_info() -> dict:
+    """Hlavná registrácia a zmluva modulu voči jadru."""
     base_info = {
-        "module_type": "core_extension",
-        "module_name": "control_panel",
-        "install_path_prefix": "",
-        "window_key": "ControlPanel",
-        "requires_main_controller": True,
-        "widget_factory_path": "{base_path}.main_logic.create_control_panel_widget",
+        ModuleInfoKey.NAME.value: "control_panel",
+        ModuleInfoKey.MODULE_NAME.value: "control_panel",
+        ModuleInfoKey.VERSION.value: "1.0.0",
+        ModuleInfoKey.DESCRIPTION.value: "Centrálny ovládací panel",
+        ModuleInfoKey.AUTHOR.value: "VenvHub Developer",
+        "dependencies": [],
+        ModuleInfoKey.INSTALL_PATH_PREFIX.value: "",
+        ModuleInfoKey.WINDOW_KEY.value: "ControlPanel",
+
+        # Cesta k _paths.py pre lokalizáciu
+        ModuleInfoKey.PATHS_MODULE_PATH.value: "{base_path}._paths",
+
+        # Vstupné body modulu
+        ModuleInfoKey.BOOTSTRAP_FUNCTION_PATH.value: "{base_path}.main_logic.bootstrap",
+        ModuleInfoKey.WIDGET_FACTORY_PATH.value: "{base_path}.main_logic.create_control_panel_widget",
+
+        # Štruktúra položiek menu
         "menu_structure": {
             "Nastavenie": [
                 {
+                    "id": "control_panel.open",
                     "text": "Ovládací panel...",
-                    "id": "control_panel.open"
+                    "window_key": "ControlPanel",
+                    "widget_factory_path": "{base_path}.main_logic.create_control_panel_widget",
+                    "required_permission": None,
+                    "requires_login": False,
+                    "requires_logged_out": False,
                 }
             ]
         },
-        # Tento kľúč tu zostáva, ale jadro ho číta cez samostatnú funkciu.
-        # Máme ho tu pre prehľadnosť a aby sme naň nezabudli.
-        "provided_groups": {
-            "SystemAdmin": [
-                "admin.system_config"
-            ]
-        }
     }
+    return _build_dynamic_paths(base_info)
 
-    # ======================================================================
-    # ČASŤ 2: SPRACOVANIE - Túto časť už nikdy nemusíš meniť
-    # ======================================================================
-    full_info = _build_dynamic_paths(base_info)
-    
-    # Kľúč 'provided_groups' odstránime z hlavného slovníka,
-    # pretože sa očakáva v samostatnej funkcii.
-    full_info.pop("provided_groups", None)
 
-    return full_info
-
-def get_provided_groups():
-    """
-    Táto funkcia vracia oprávnenia, ktoré tento modul pridáva do systému.
-    Jadro ju volá samostatne.
-    """
-    # Tu vraciame natvrdo definované skupiny, pretože neobsahujú dynamické cesty
-    # a sú len konfiguračnými dátami.
+def get_provided_groups() -> dict:
+    """Skupiny a oprávnenia, ktoré modul poskytuje do systému."""
     return {
-        "SystemAdmin": [
-            "admin.system_config"
+        "Administrátor": [
+            "admin.system_config",
+            "perm_control_panel_edit_layout",
         ]
     }
+
+
+def get_provided_services() -> list:
+    return []

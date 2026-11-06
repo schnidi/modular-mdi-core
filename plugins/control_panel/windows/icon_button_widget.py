@@ -1,7 +1,13 @@
+# Súbor: modules/control_panel/windows/icon_button_widget.py
+"""
+Widget ikony v ovládacom paneli s podporou dynamickej zmeny textu a tém.
+"""
+
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PyQt6.QtSvgWidgets import QSvgWidget
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QMouseEvent, QCursor
+
 
 class IconButtonWidget(QWidget):
     clicked = pyqtSignal()
@@ -9,12 +15,8 @@ class IconButtonWidget(QWidget):
     def __init__(self, icon_path: str, text: str, parent=None):
         super().__init__(parent)
         
-        # Povie widgetu, aby rešpektoval štýly pozadia z QSS
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        
         self.setFixedSize(120, 100)
-        
-        # Nastaví kurzor myši na "ručičku", keď je nad widgetom
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         
         layout = QVBoxLayout(self)
@@ -31,13 +33,17 @@ class IconButtonWidget(QWidget):
         layout.addWidget(self.svg_widget, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self.label, 1)
 
+    def set_text(self, text: str):
+        """Dynamická zmena textu pri prepnutí jazyka."""
+        self.label.setText(text)
+
+    def get_text(self) -> str:
+        return self.label.text()
+
     def mousePressEvent(self, event: QMouseEvent):
-        # Táto a nasledujúca metóda by mohli byť nahradené :pressed v QSS,
-        # ale pre istotu ich tu nechávame pre robustnosť.
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
-        # Overíme, či sa kliknutie uvoľnilo nad widgetom, aby sa akcia nespustila omylom
         if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.pos()):
             self.clicked.emit()
         super().mouseReleaseEvent(event)

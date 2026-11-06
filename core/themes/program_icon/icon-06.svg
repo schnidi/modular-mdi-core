@@ -1,0 +1,50 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Pozadie s jemným gradientom -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1f232a"/>
+      <stop offset="100%" stop-color="#121418"/>
+    </linearGradient>
+
+    <!-- Gradient pre systémové moduly (Core) -->
+    <linearGradient id="coreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4a90e2"/>
+      <stop offset="100%" stop-color="#357abd"/>
+    </linearGradient>
+
+    <!-- Gradient pre zásuvný modul (Plugin) -->
+    <linearGradient id="pluginGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00e5ff"/>
+      <stop offset="100%" stop-color="#00b4d8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Pozadie aplikácie -->
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="url(#bgGrad)" stroke="#2d333b" stroke-width="4"/>
+
+  <!-- Centrálna zbernica (spojovacie čiary v pozadí) -->
+  <line x1="90" y1="90" x2="166" y2="166" stroke="#00e5ff" stroke-width="6" stroke-linecap="round" stroke-opacity="0.25"/>
+  <line x1="166" y1="90" x2="90" y2="166" stroke="#4a90e2" stroke-width="6" stroke-linecap="round" stroke-opacity="0.25"/>
+
+  <!-- Blok 1: Hore vľavo (Základné jadro) -->
+  <rect x="52" y="52" width="68" height="68" rx="18" fill="url(#coreGrad)"/>
+  <circle cx="86" cy="86" r="10" fill="#ffffff" fill-opacity="0.3"/>
+
+  <!-- Blok 2: Hore vpravo (Dynamický Plugin modul - zvýraznený) -->
+  <rect x="136" y="52" width="68" height="68" rx="18" fill="url(#pluginGrad)"/>
+  <!-- Symbol konektivity / slotu -->
+  <circle cx="170" cy="86" r="12" fill="#121418"/>
+  <circle cx="170" cy="86" r="6" fill="#00e5ff"/>
+
+  <!-- Blok 3: Dole vľavo (Služby a Data) -->
+  <rect x="52" y="136" width="68" height="68" rx="18" fill="#2b3b52"/>
+  <rect x="74" y="166" width="24" height="8" rx="4" fill="#4a90e2"/>
+
+  <!-- Blok 4: Dole vpravo (UI / MDI Engine) -->
+  <rect x="136" y="136" width="68" height="68" rx="18" fill="url(#coreGrad)"/>
+  <circle cx="170" cy="170" r="10" fill="#ffffff" fill-opacity="0.3"/>
+
+  <!-- Stredový Core bod (Srdce systému) -->
+  <circle cx="128" cy="128" r="14" fill="#121418"/>
+  <circle cx="128" cy="128" r="8" fill="#00e5ff"/>
+</svg>
