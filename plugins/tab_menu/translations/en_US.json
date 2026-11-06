@@ -1,0 +1,19 @@
+{
+  "TabMenuBar": "Window Tab Bar",
+  "tab_menu.toggle": "Window Tab Bar (Show/Hide)",
+  "tab_all_windows": "All Windows",
+
+  "tab_setting_close": "Show close button (cross)",
+  "tab_setting_isolate": "Show active tab windows only (minimize others)",
+  "tab_setting_front": "Bring tab windows to front",
+  "tab_setting_focus": "Dropdown window: Click to activate to front immediately",
+
+  "tab_action_min_all": "Minimize all windows",
+  "tab_action_rest_all": "Restore all windows",
+  "tab_action_tile": "Tile windows side by side",
+  "tab_action_cascade": "Cascade windows",
+
+  "tabSettingsBtn": "Tab bar settings",
+  "tabDropdownBtn": "List of open module windows",
+  "btn_close": "Close all windows in this tab"
+}
