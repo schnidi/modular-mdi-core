@@ -20,22 +20,38 @@ class TabMenuService:
         return _tab_menu_instance
 
 
-def bootstrap_tab_menu(bridge: ICoreBridge, *args, **kwargs):
+def _get_bridge(bridge: ICoreBridge = None) -> ICoreBridge:
     """
-    Vstupný bod modulu. Jadro sem injektuje ICoreBridge.
-    Modul si ho uloží a použije na všetko.
+    Bezpečne získa inštanciu ICoreBridge:
+    1. Z odovzdaného parametra
+    2. Z lokálnej cache modulu
+    3. Priamo zo Singletonu jadra (funguje aj pri aktivácii za behu bez reštartu!)
     """
     global _cached_bridge
-    _cached_bridge = bridge
-    create_widget(bridge=bridge, **kwargs)
+    if bridge is not None:
+        _cached_bridge = bridge
+        return bridge
+    if _cached_bridge is not None:
+        return _cached_bridge
+
+    _cached_bridge = ICoreBridge.get_instance()
+    return _cached_bridge
+
+
+def bootstrap_tab_menu(bridge: ICoreBridge = None, *args, **kwargs):
+    """
+    Vstupný bod modulu pri štarte aplikácie.
+    """
+    b = _get_bridge(bridge)
+    create_widget(bridge=b, **kwargs)
 
 
 def create_widget(bridge: ICoreBridge = None, **kwargs):
-    global _tab_menu_instance, _cached_bridge
+    global _tab_menu_instance
 
-    # Ak nám funkciu volá iná časť modulu bez bridge-a, použijeme cachovaný
-    bridge = bridge or _cached_bridge
     
+    bridge = _get_bridge(bridge)
+
     if not bridge:
         print("[TAB_MENU] CHYBA: Bridge nebol poskytnutý jadrom!")
         return None
@@ -51,17 +67,14 @@ def create_widget(bridge: ICoreBridge = None, **kwargs):
         return None
 
     if QThread.currentThread() != app.thread():
-        # OPRAVA: Vrátený bezpečný mechanizmus z tvojho jadra na prenos z Worker vlákna na GUI vlákno!
-        # QTimer.singleShot tu zlyhával, lebo app event loop ešte plne nebežal.
         if hasattr(bridge, "run_on_gui_thread"):
             bridge.run_on_gui_thread.emit(lambda: create_widget(bridge=bridge, **kwargs))
         return None
 
-    # Služby pýtame VÝHRADNE cez ICoreBridge
+    
     main_controller = kwargs.get("main_controller") or bridge.get_service("window_manager")
 
     if not main_controller or not hasattr(main_controller, "view") or main_controller.view is None:
-        # Ak okno ešte nie je hotové, prenecháme čakanie na ICoreBridge a ServiceManager
         bridge.on_service_ready(
             "window_manager",
             lambda wm: create_widget(bridge=bridge, main_controller=wm)
@@ -80,10 +93,19 @@ def create_widget(bridge: ICoreBridge = None, **kwargs):
     return view
 
 
-def toggle_tab_menu(*args, **kwargs):
+def toggle_tab_menu(bridge: ICoreBridge = None, *args, **kwargs):
+    """
+    Obsluha kliknutia na položku v menu 'Okno -> Záložková lišta'.
+    Jadro sem posiela inštanciu bridge ako prvý parameter.
+    """
     global _tab_menu_instance
+    
+    
+    incoming_bridge = bridge or (args[0] if args and isinstance(args[0], ICoreBridge) else None)
+    b = _get_bridge(incoming_bridge)
+
     if _tab_menu_instance is None:
-        create_widget()
+        create_widget(bridge=b)
     else:
         if hasattr(_tab_menu_instance, "controller") and _tab_menu_instance.controller:
             _tab_menu_instance.controller.toggle_visibility()
